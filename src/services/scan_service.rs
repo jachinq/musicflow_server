@@ -479,7 +479,7 @@ impl ScanService {
     ) -> Result<(), AppError> {
         // 先尝试查找
         let existing = sqlx::query_scalar::<_, String>(
-            "SELECT id FROM songs WHERE album_id = ? AND title = ? AND file_path = ?",
+            "SELECT id FROM songs WHERE file_path = ?",
         )
         .bind(path_to_string(path))
         .fetch_optional(&self.pool)
