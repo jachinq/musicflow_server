@@ -6,6 +6,7 @@ use crate::models::dto::{SongDto, SongDetailDto};
 
 /// 歌曲响应 (Subsonic 格式)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SongResponse {
     pub id: String,
     pub title: String,
@@ -104,5 +105,17 @@ pub struct TopSongsResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TopSongs {
+    pub song: Vec<SongResponse>,
+}
+
+/// 流派歌曲响应
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SongsByGenreResponse {
+    pub songs_by_genre: SongsByGenre,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SongsByGenre {
     pub song: Vec<SongResponse>,
 }

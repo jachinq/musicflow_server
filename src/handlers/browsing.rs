@@ -7,7 +7,7 @@ use crate::models::response::{
     AlbumDetail, AlbumDetailResponse, AlbumList2, AlbumList2Response, AlbumResponse, ArtistDetail,
     ArtistIndex, ArtistResponse, Artists, ArtistsResponse, Directory, Index, Indexes, RandomSongs,
     RandomSongsResponse, ResponseContainer, SongResponse, SubsonicResponse, ArtistDetailResponse,
-    TopSongs, TopSongsResponse, Genre, Genres, GenresResponse,
+    TopSongs, TopSongsResponse, Genre, Genres, GenresResponse, SongsByGenre, SongsByGenreResponse,
 };
 use axum::{extract::Query, routing::get, Json, Router};
 use serde::Deserialize;
@@ -779,6 +779,22 @@ pub struct GetTopSongsParams {
     pub f: Option<String>,
 }
 
+/// 获取流派歌曲参数
+#[derive(Debug, Deserialize)]
+pub struct GetSongsByGenreParams {
+    pub genre: String,
+    pub count: Option<i32>,
+    pub offset: Option<i32>,
+    pub music_folder_id: Option<String>,
+    pub u: String,
+    pub t: Option<String>,
+    pub s: Option<String>,
+    pub p: Option<String>,
+    pub v: String,
+    pub c: String,
+    pub f: Option<String>,
+}
+
 /// GET /rest/getTopSongs - 获取艺术家热门歌曲
 pub async fn get_top_songs(
     axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
@@ -832,6 +848,52 @@ pub async fn get_top_songs(
 
     let result = TopSongsResponse {
         top_songs: TopSongs {
+            song: song_responses,
+        },
+    };
+
+    Ok(Json(SubsonicResponse {
+        response: ResponseContainer {
+            status: "ok".to_string(),
+            version: "1.16.1".to_string(),
+            error: None,
+            data: Some(result),
+        },
+    }))
+}
+
+/// GET /rest/getSongsByGenre - 获取指定流派的歌曲
+pub async fn get_songs_by_genre(
+    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    Query(params): Query<GetSongsByGenreParams>,
+) -> Result<Json<SubsonicResponse<SongsByGenreResponse>>, AppError> {
+    use crate::models::dto::SongDetailDto;
+
+    let count = params.count.unwrap_or(10).min(500); // 默认10首，最多500首
+    let offset = params.offset.unwrap_or(0);
+
+    // 查询指定流派的歌曲
+    let songs = sqlx::query_as::<_, SongDetailDto>(
+        "SELECT s.id, s.title, ar.name as artist, s.artist_id, al.name as album, s.album_id,
+                s.genre, s.year, s.duration, s.bit_rate, s.content_type,
+                s.track_number, s.disc_number, al.cover_art_path
+         FROM songs s
+         JOIN albums al ON s.album_id = al.id
+         JOIN artists ar ON s.artist_id = ar.id
+         WHERE s.genre = ?
+         ORDER BY s.title ASC
+         LIMIT ? OFFSET ?",
+    )
+    .bind(&params.genre)
+    .bind(count)
+    .bind(offset)
+    .fetch_all(&*pool)
+    .await?;
+
+    let song_responses: Vec<SongResponse> = songs.into_iter().map(|dto| dto.into()).collect();
+
+    let result = SongsByGenreResponse {
+        songs_by_genre: SongsByGenre {
             song: song_responses,
         },
     };
@@ -905,4 +967,5 @@ pub fn routes() -> Router<Arc<SqlitePool>> {
         .route("/rest/getArtistInfo", get(get_artist_info))
         .route("/rest/getArtistInfo2", get(get_artist_info2))
         .route("/rest/getTopSongs", get(get_top_songs))
+        .route("/rest/getSongsByGenre", get(get_songs_by_genre))
 }

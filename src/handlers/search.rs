@@ -13,6 +13,7 @@ use std::sync::Arc;
 use crate::error::AppError;
 use crate::models::response::{
     SubsonicResponse, ResponseContainer, SearchResult, SearchResult2, SearchResult3,
+    SearchResultResponse, SearchResult2Response, SearchResult3Response,
     ArtistResponse, AlbumResponse, SongResponse,
 };
 use crate::models::dto::{ArtistDto, AlbumDto, SongDto};
@@ -77,7 +78,7 @@ pub struct SearchParams {
 pub async fn search3(
     axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
     Query(params): Query<Search3Params>,
-) -> Result<Json<SubsonicResponse<SearchResult3>>, AppError> {
+) -> Result<Json<SubsonicResponse<SearchResult3Response>>, AppError> {
     let artist_count = params.artist_count.unwrap_or(20);
     let artist_offset = params.artist_offset.unwrap_or(0);
     let album_count = params.album_count.unwrap_or(20);
@@ -138,10 +139,12 @@ pub async fn search3(
 
     let songs: Vec<SongResponse> = song_dtos.into_iter().map(Into::into).collect();
 
-    let result = SearchResult3 {
-        artist: artists,
-        album: albums,
-        song: songs,
+    let result = SearchResult3Response {
+        search_result3: SearchResult3 {
+            artist: artists,
+            album: albums,
+            song: songs,
+        },
     };
 
     Ok(Json(SubsonicResponse {
@@ -158,7 +161,7 @@ pub async fn search3(
 pub async fn search2(
     axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
     Query(params): Query<Search2Params>,
-) -> Result<Json<SubsonicResponse<SearchResult2>>, AppError> {
+) -> Result<Json<SubsonicResponse<SearchResult2Response>>, AppError> {
     let artist_count = params.artist_count.unwrap_or(20);
     let artist_offset = params.artist_offset.unwrap_or(0);
     let album_count = params.album_count.unwrap_or(20);
@@ -219,10 +222,12 @@ pub async fn search2(
 
     let songs: Vec<SongResponse> = song_dtos.into_iter().map(Into::into).collect();
 
-    let result = SearchResult2 {
-        artist: artists,
-        album: albums,
-        song: songs,
+    let result = SearchResult2Response {
+        search_result2: SearchResult2 {
+            artist: artists,
+            album: albums,
+            song: songs,
+        },
     };
 
     Ok(Json(SubsonicResponse {
@@ -239,7 +244,7 @@ pub async fn search2(
 pub async fn search(
     axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
     Query(params): Query<SearchParams>,
-) -> Result<Json<SubsonicResponse<SearchResult>>, AppError> {
+) -> Result<Json<SubsonicResponse<SearchResultResponse>>, AppError> {
     let count = params.count.unwrap_or(20);
     let offset = params.offset.unwrap_or(0);
 
@@ -363,10 +368,12 @@ pub async fn search(
         vec![]
     };
 
-    let result = SearchResult {
-        artist: artists,
-        album: albums,
-        song: songs,
+    let result = SearchResultResponse {
+        search_result: SearchResult {
+            artist: artists,
+            album: albums,
+            song: songs,
+        },
     };
 
     Ok(Json(SubsonicResponse {
