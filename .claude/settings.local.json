@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo :*)",
+      "Bash(sqlite3 music_flow.db \".tables\")",
+      "Bash(sqlx database print-sqlite-schema)",
+      "Bash(cargo check)",
+      "Bash(cargo test)",
+      "Bash(cargo add)",
+      "Bash(cargo check --lib)",
+      "Bash(wc:*)",
+      "Bash(ls:*)",
+      "Bash(xargs:*)",
+      "Bash(~/.cargo/bin/cargo check)",
+      "Bash(curl:*)",
+      "Bash(cargo build:*)"
+    ]
+  }
+}
