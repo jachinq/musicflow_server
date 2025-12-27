@@ -7,7 +7,7 @@ use crate::models::response::{
     AlbumDetail, AlbumDetailResponse, AlbumList2, AlbumList2Response, AlbumResponse, ArtistDetail,
     ArtistIndex, ArtistResponse, Artists, ArtistsResponse, Directory, Index, Indexes, RandomSongs,
     RandomSongsResponse, ResponseContainer, SongResponse, SubsonicResponse, ArtistDetailResponse,
-    TopSongs, TopSongsResponse,
+    TopSongs, TopSongsResponse, Genre, Genres, GenresResponse,
 };
 use axum::{extract::Query, routing::get, Json, Router};
 use serde::Deserialize;
@@ -786,7 +786,7 @@ pub async fn get_top_songs(
 ) -> Result<Json<SubsonicResponse<TopSongsResponse>>, AppError> {
     use crate::models::dto::SongDetailDto;
 
-    let count = params.count.unwrap_or(50).min(50); // 默认50首，最多50首
+    let count = params.count.unwrap_or(50).max(5000); // 默认50首，最多5000首
 
     // 根据艺术家名字查询艺术家ID
     let artist = sqlx::query_as::<_, (String,)>("SELECT id FROM artists WHERE name = ?")
@@ -815,7 +815,7 @@ pub async fn get_top_songs(
     let songs = sqlx::query_as::<_, SongDetailDto>(
         "SELECT s.id, s.title, ar.name as artist, s.artist_id, al.name as album, s.album_id,
                 s.genre, s.year, s.duration, s.bit_rate, s.content_type,
-                s.track_number, s.disc_number, s.cover_art_path
+                s.track_number, s.disc_number, al.cover_art_path
          FROM songs s
          JOIN albums al ON s.album_id = al.id
          JOIN artists ar ON s.artist_id = ar.id
@@ -846,10 +846,55 @@ pub async fn get_top_songs(
     }))
 }
 
+/// GET /rest/getGenres - 获取所有流派
+pub async fn get_genres(
+    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+) -> Result<Json<SubsonicResponse<GenresResponse>>, AppError> {
+    // 从歌曲和专辑中统计流派及其计数
+    let genres = sqlx::query_as::<_, (String, i32, i32)>(
+        "SELECT
+            COALESCE(s.genre, a.genre) as genre,
+            COUNT(DISTINCT s.id) as song_count,
+            COUNT(DISTINCT a.id) as album_count
+         FROM songs s
+         LEFT JOIN albums a ON s.album_id = a.id
+         WHERE COALESCE(s.genre, a.genre) IS NOT NULL
+         GROUP BY COALESCE(s.genre, a.genre)
+         ORDER BY COALESCE(s.genre, a.genre)"
+    )
+    .fetch_all(&*pool)
+    .await?;
+
+    let genre_list: Vec<Genre> = genres
+        .into_iter()
+        .map(|(name, song_count, album_count)| Genre {
+            name,
+            song_count,
+            album_count,
+        })
+        .collect();
+
+    let result = GenresResponse {
+        genres: Genres {
+            genres: genre_list,
+        },
+    };
+
+    Ok(Json(SubsonicResponse {
+        response: ResponseContainer {
+            status: "ok".to_string(),
+            version: "1.16.1".to_string(),
+            error: None,
+            data: Some(result),
+        },
+    }))
+}
+
 pub fn routes() -> Router<Arc<SqlitePool>> {
     Router::new()
         .route("/rest/getIndexes", get(get_indexes))
         .route("/rest/getMusicDirectory", get(get_music_directory))
+        .route("/rest/getGenres", get(get_genres))
         .route("/rest/getArtists", get(get_artists))
         .route("/rest/getArtist", get(get_artist))
         .route("/rest/getAlbum", get(get_album))

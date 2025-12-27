@@ -196,6 +196,20 @@ http://你的服务器.com/rest/
 </directory>
 ```
 
+### getGenres
+
+返回流派列表。
+
+**参数：**
+无
+
+**响应：**
+```xml
+<genres>
+    <genre songCount="28" albumCount="6">Electronic</genre>
+</genres>
+```
+
 ### getArtists
 
 与 getIndexes 类似，但按 ID3 标签组织音乐。

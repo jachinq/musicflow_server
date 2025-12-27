@@ -10,6 +10,7 @@ pub mod starred;
 pub mod rating;
 pub mod common;
 pub mod search;
+pub mod genre;
 
 // 导出常用类型
 pub use artist::*;
@@ -21,3 +22,4 @@ pub use starred::*;
 pub use rating::*;
 pub use common::*;
 pub use search::*;
+pub use genre::*;
