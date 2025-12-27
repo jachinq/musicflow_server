@@ -5,7 +5,7 @@ CREATE TABLE starred (
     artist_id TEXT REFERENCES artists(id) ON DELETE CASCADE,
     album_id TEXT REFERENCES albums(id) ON DELETE CASCADE,
     song_id TEXT REFERENCES songs(id) ON DELETE CASCADE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(user_id, artist_id),
     UNIQUE(user_id, album_id),
     UNIQUE(user_id, song_id)

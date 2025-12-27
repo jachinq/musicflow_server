@@ -10,8 +10,8 @@ CREATE TABLE albums (
     song_count INTEGER DEFAULT 0,
     duration INTEGER DEFAULT 0,
     play_count INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- 索引

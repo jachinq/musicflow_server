@@ -6,8 +6,8 @@ CREATE TABLE ratings (
     album_id TEXT REFERENCES albums(id) ON DELETE CASCADE,
     song_id TEXT REFERENCES songs(id) ON DELETE CASCADE,
     rating INTEGER CHECK (rating >= 1 AND rating <= 5),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(user_id, artist_id),
     UNIQUE(user_id, album_id),
     UNIQUE(user_id, song_id)

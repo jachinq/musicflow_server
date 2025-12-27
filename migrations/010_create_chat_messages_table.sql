@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     username TEXT NOT NULL,
     message TEXT NOT NULL,
     timestamp INTEGER NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX idx_chat_messages_timestamp ON chat_messages(timestamp DESC);

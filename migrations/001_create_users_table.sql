@@ -16,8 +16,8 @@ CREATE TABLE users (
     share_role INTEGER DEFAULT 1,
     video_conversion_role INTEGER DEFAULT 0,
     scrobbling_enabled INTEGER DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- 索引

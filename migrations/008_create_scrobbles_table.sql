@@ -3,9 +3,9 @@ CREATE TABLE scrobbles (
     id TEXT PRIMARY KEY,
     user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
     song_id TEXT REFERENCES songs(id) ON DELETE CASCADE,
-    timestamp TIMESTAMP NOT NULL,
+    timestamp TEXT NOT NULL,
     submission INTEGER DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- 索引

@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS videos (
     bit_rate INTEGER,
     width INTEGER,
     height INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX idx_videos_title ON videos(title);
@@ -21,9 +21,9 @@ CREATE TABLE IF NOT EXISTS now_playing (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     username TEXT NOT NULL,
     song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
-    started_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    started_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX idx_now_playing_user ON now_playing(user_id);

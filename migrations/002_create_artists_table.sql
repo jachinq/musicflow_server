@@ -4,8 +4,8 @@ CREATE TABLE artists (
     name TEXT NOT NULL,
     music_brainz_id TEXT,
     cover_art_path TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- 索引

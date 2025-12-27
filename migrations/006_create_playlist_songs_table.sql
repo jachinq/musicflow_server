@@ -3,7 +3,7 @@ CREATE TABLE playlist_songs (
     playlist_id TEXT REFERENCES playlists(id) ON DELETE CASCADE,
     song_id TEXT REFERENCES songs(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (playlist_id, song_id)
 );
 
