@@ -3,6 +3,7 @@
 
 use crate::error::AppError;
 use crate::models::entities::{Album, Artist, Song};
+use crate::utils::{get_image_format, write_image_to_file};
 use sqlx::SqlitePool;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -10,6 +11,7 @@ use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::{MetadataOptions, StandardTagKey};
 use symphonia::core::probe::Hint;
+use uuid::Uuid;
 use walkdir::WalkDir;
 
 /// 音乐库扫描服务
@@ -44,6 +46,7 @@ struct AudioMetadata {
     channels: Option<u8>,
     content_type: String,
     file_size: Option<u64>,
+    cover_art_raw: Option<(String, Box<[u8]>)>,
 }
 
 impl ScanService {
@@ -122,6 +125,7 @@ impl ScanService {
             metadata.disc_number,
             &metadata.content_type,
             metadata.file_size,
+            metadata.cover_art_raw,
         )
         .await?;
         Ok(())
@@ -180,6 +184,7 @@ impl ScanService {
             channels: metadata.channels,
             content_type,
             file_size,
+            cover_art_raw: metadata.cover_art_raw,
         })
     }
 
@@ -290,6 +295,18 @@ impl ScanService {
                     _ => {}
                 }
             }
+
+            // 处理图片元数据
+            let album = metadata_rev
+                .visuals()
+                .iter()
+                .map(|f| (f.media_type.clone(), f.data.clone()))
+                .collect::<Vec<_>>();
+
+            // println!("metadata_rev: {:?}", album.len());
+            album.iter().for_each(|f| {
+                metadata.cover_art_raw = Some((f.0.to_string(), f.1.clone()));
+            });
         }
 
         Ok(metadata)
@@ -351,13 +368,14 @@ impl ScanService {
         disc_number: Option<i32>,
         content_type: &str,
         file_size: Option<u64>,
+        cover_art_raw: Option<(String, Box<[u8]>)>,
     ) -> Result<(), AppError> {
         // 插入或更新艺术家
         let artist_id = self.get_or_create_artist(artist_name).await?;
 
         // 插入或更新专辑
         let album_id = self
-            .get_or_create_album(&artist_id, album_name, year, genre)
+            .get_or_create_album(&artist_id, album_name, year, genre, cover_art_raw)
             .await?;
 
         // 插入或更新歌曲
@@ -417,6 +435,7 @@ impl ScanService {
         name: &str,
         year: Option<i32>,
         genre: Option<&str>,
+        cover_art_raw: Option<(String, Box<[u8]>)>,
     ) -> Result<String, AppError> {
         // 先尝试查找
         let existing = sqlx::query_scalar::<_, String>(
@@ -432,7 +451,7 @@ impl ScanService {
         }
 
         // 创建新专辑
-        let album = Album::new(
+        let mut album = Album::new(
             artist_id.to_string(),
             name.to_string(),
             path_to_string(&self.library_path), // 简化处理
@@ -440,6 +459,17 @@ impl ScanService {
             genre.map(|s| s.to_string()),
             None,
         );
+
+        // 写入专辑封面
+        if let Some((mime_type, data)) = cover_art_raw {
+            let format = get_image_format(&mime_type);
+
+            let cover_art = format!("al-{}", Uuid::new_v4().to_string()[0..12].to_string());
+            let file_path = format!("{}/{}.{}", "./coverArt", cover_art, format);
+            write_image_to_file(&data, &file_path)?;
+            album.cover_art_path = Some(cover_art);
+        }
+
         sqlx::query(
             "INSERT INTO albums (id, artist_id, name, year, genre, cover_art_path, path,
              song_count, duration, play_count, created_at, updated_at)
@@ -478,12 +508,10 @@ impl ScanService {
         file_size: Option<u64>,
     ) -> Result<(), AppError> {
         // 先尝试查找
-        let existing = sqlx::query_scalar::<_, String>(
-            "SELECT id FROM songs WHERE file_path = ?",
-        )
-        .bind(path_to_string(path))
-        .fetch_optional(&self.pool)
-        .await?;
+        let existing = sqlx::query_scalar::<_, String>("SELECT id FROM songs WHERE file_path = ?")
+            .bind(path_to_string(path))
+            .fetch_optional(&self.pool)
+            .await?;
 
         // 创建新歌曲
         let song = Song::new(

@@ -4,7 +4,7 @@
 use crate::error::AppError;
 use crate::models::dto::{AlbumDto, ArtistDto, SongDto};
 use crate::models::response::{
-    AlbumResponse, ArtistResponse, RatingResponse, ResponseContainer, SongResponse,
+    AlbumResponse, ArtistResponse, RatingResponse, ResponseContainer, Song,
     SubsonicResponse,
 };
 use crate::services::ScanService;
@@ -480,7 +480,7 @@ pub async fn get_starred(
         song: if starred_songs.is_empty() {
             None
         } else {
-            Some(SongResponse::from_dtos(starred_songs))
+            Some(Song::from_dtos(starred_songs))
         },
     };
 

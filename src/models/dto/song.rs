@@ -5,6 +5,7 @@ use sqlx::FromRow;
 
 /// 歌曲基础信息 DTO (用于列表和搜索)
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct SongDto {
     pub id: String,
     pub title: String,
@@ -12,10 +13,12 @@ pub struct SongDto {
     pub album: String,
     pub duration: i32,
     pub content_type: Option<String>,
+    pub cover_art: Option<String>,
 }
 
 /// 歌曲详细信息 DTO (包含所有字段)
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct SongDetailDto {
     pub id: String,
     pub title: String,
@@ -30,5 +33,6 @@ pub struct SongDetailDto {
     pub genre: Option<String>,
     pub year: Option<i32>,
     pub content_type: Option<String>,
-    pub cover_art_path: Option<String>,
+    pub path: Option<String>,
+    pub cover_art: Option<String>,
 }

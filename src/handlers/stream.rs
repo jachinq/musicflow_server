@@ -168,53 +168,23 @@ pub async fn download(
 
 /// GET /rest/getCoverArt - 获取封面图片
 pub async fn get_cover_art(
-    claims: crate::middleware::auth_middleware::Claims,
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    // claims: crate::middleware::auth_middleware::Claims,
+    // axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
     Query(params): Query<CoverArtParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    // 检查封面艺术权限
-    let permissions = crate::middleware::auth_middleware::get_user_permissions(&pool, &claims.sub)
-        .await
-        .map_err(|_| AppError::access_denied("Failed to check permissions"))?;
+    // // 检查封面艺术权限
+    // let permissions = crate::middleware::auth_middleware::get_user_permissions(&pool, &claims.sub)
+    //     .await
+    //     .map_err(|_| AppError::access_denied("Failed to check permissions"))?;
 
-    if !permissions.can_access_cover_art() {
-        return Err(AppError::access_denied("Cover art permission required"));
-    }
+    // if !permissions.can_access_cover_art() {
+    //     return Err(AppError::access_denied("Cover art permission required"));
+    // }
 
-    // 首先尝试从专辑获取封面
-    let cover_path = sqlx::query!(
-        "SELECT cover_art_path FROM albums WHERE id = ?",
-        params.id
-    )
-    .fetch_optional(&*pool)
-    .await?;
-
-    if let Some(row) = cover_path {
-        if let Some(path_str) = row.cover_art_path {
-            let file_path = PathBuf::from(&path_str);
-
-            if file_path.exists() {
-                return serve_image_file(file_path).await;
-            }
-        }
-    }
-
-    // 尝试从艺术家获取封面
-    let artist_cover = sqlx::query!(
-        "SELECT cover_art_path FROM artists WHERE id = ?",
-        params.id
-    )
-    .fetch_optional(&*pool)
-    .await?;
-
-    if let Some(row) = artist_cover {
-        if let Some(path_str) = row.cover_art_path {
-            let file_path = PathBuf::from(&path_str);
-
-            if file_path.exists() {
-                return serve_image_file(file_path).await;
-            }
-        }
+    let file_path = format!("./coverArt/{}.jpg", params.id);
+    let file_path = PathBuf::from(&file_path);
+    if file_path.exists() {
+        return serve_image_file(file_path).await;
     }
 
     // 如果没有找到封面，返回默认封面或 404

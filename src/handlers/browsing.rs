@@ -2,16 +2,17 @@
 #![allow(dead_code)]
 
 use crate::error::AppError;
-use crate::models::dto::ArtistDto;
+use crate::models::dto::{ArtistDto, SongDetailDto, AlbumDetailDto};
 use crate::models::response::{
     AlbumDetail, AlbumDetailResponse, AlbumList2, AlbumList2Response, AlbumResponse, ArtistDetail,
-    ArtistIndex, ArtistResponse, Artists, ArtistsResponse, Directory, Index, Indexes, RandomSongs,
-    RandomSongsResponse, ResponseContainer, SongResponse, SubsonicResponse, ArtistDetailResponse,
-    TopSongs, TopSongsResponse, Genre, Genres, GenresResponse, SongsByGenre, SongsByGenreResponse,
+    ArtistDetailResponse, ArtistIndex, ArtistResponse, Artists, ArtistsResponse, Directory, Genre,
+    Genres, GenresResponse, Index, Indexes, RandomSongs, RandomSongsResponse, ResponseContainer,
+    Song, SongResponse, SongsByGenreResponse, SongsResponse, SubsonicResponse, TopSongs,
+    TopSongsResponse,
 };
+use crate::services::SongService;
 use axum::{extract::Query, routing::get, Json, Router};
 use serde::Deserialize;
-use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -75,13 +76,13 @@ pub struct GetSongParams {
 
 /// GET /rest/getIndexes
 pub async fn get_indexes(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(_params): Query<GetIndexesParams>,
 ) -> Result<Json<SubsonicResponse<Indexes>>, AppError> {
     // 查询所有艺术家
     let artists =
         sqlx::query_as::<_, (String, String)>("SELECT id, name FROM artists ORDER BY name")
-            .fetch_all(&*pool)
+            .fetch_all(&*state.pool)
             .await?;
 
     // 按首字母分组
@@ -127,7 +128,7 @@ pub async fn get_indexes(
 
 /// GET /rest/getMusicDirectory
 pub async fn get_music_directory(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetMusicDirectoryParams>,
 ) -> Result<Json<SubsonicResponse<Directory>>, AppError> {
     // 判断是艺术家还是专辑
@@ -139,7 +140,7 @@ pub async fn get_music_directory(
         "SELECT id, artist_id, name, song_count FROM albums WHERE id = ?",
     )
     .bind(&params.id)
-    .fetch_optional(&*pool)
+    .fetch_optional(&*state.pool)
     .await?;
 
     if let Some((id, artist_id, name, _song_count)) = album {
@@ -148,7 +149,7 @@ pub async fn get_music_directory(
             "SELECT id, title FROM songs WHERE album_id = ? ORDER BY track_number",
         )
         .bind(&id)
-        .fetch_all(&*pool)
+        .fetch_all(&*state.pool)
         .await?;
 
         let child = songs
@@ -183,7 +184,7 @@ pub async fn get_music_directory(
     // 尝试作为艺术家查询
     let artist = sqlx::query_as::<_, (String, String)>("SELECT id, name FROM artists WHERE id = ?")
         .bind(&params.id)
-        .fetch_optional(&*pool)
+        .fetch_optional(&*state.pool)
         .await?;
 
     if let Some((id, name)) = artist {
@@ -192,7 +193,7 @@ pub async fn get_music_directory(
             "SELECT id, name FROM albums WHERE artist_id = ? ORDER BY name",
         )
         .bind(&id)
-        .fetch_all(&*pool)
+        .fetch_all(&*state.pool)
         .await?;
 
         let child = albums
@@ -229,12 +230,12 @@ pub async fn get_music_directory(
 
 /// GET /rest/getArtists
 pub async fn get_artists(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(_params): Query<GetArtistsParams>,
 ) -> Result<Json<SubsonicResponse<ArtistsResponse>>, AppError> {
     // 查询艺术家信息
     let artist = sqlx::query_as::<_, ArtistDto>("SELECT id, name, cover_art_path FROM artists")
-        .fetch_all(&*pool)
+        .fetch_all(&*state.pool)
         .await?;
 
     let mut index_map: HashMap<String, Vec<ArtistResponse>> = HashMap::new();
@@ -280,7 +281,7 @@ pub async fn get_artists(
 
 /// GET /rest/getArtist
 pub async fn get_artist(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetArtistParams>,
 ) -> Result<Json<SubsonicResponse<ArtistDetailResponse>>, AppError> {
     // 查询艺术家信息
@@ -288,7 +289,7 @@ pub async fn get_artist(
         "SELECT id, name, cover_art_path FROM artists WHERE id = ?",
     )
     .bind(&params.id)
-    .fetch_optional(&*pool)
+    .fetch_optional(&*state.pool)
     .await?
     .ok_or_else(|| AppError::not_found("ArtistResponse"))?;
 
@@ -297,7 +298,7 @@ pub async fn get_artist(
         "SELECT id, name, year, song_count FROM albums WHERE artist_id = ? ORDER BY year, name",
     )
     .bind(&artist.0)
-    .fetch_all(&*pool)
+    .fetch_all(&*state.pool)
     .await?;
 
     let album_list = albums
@@ -339,62 +340,50 @@ pub async fn get_artist(
 
 /// GET /rest/getAlbum
 pub async fn get_album(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetAlbumParams>,
 ) -> Result<Json<SubsonicResponse<AlbumDetailResponse>>, AppError> {
     // 查询专辑信息
-    let album = sqlx::query_as::<_, (String, String, String, String, Option<i32>, i32)>(
-        "SELECT a.id, a.name, ar.name as artist_name, a.artist_id, a.year, a.song_count
-         FROM albums a
-         JOIN artists ar ON a.artist_id = ar.id
-         WHERE a.id = ?",
+    let album = sqlx::query_as::<_, AlbumDetailDto>(
+        "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
+                    a.cover_art_path, a.song_count, a.duration, a.play_count
+             FROM albums a
+             JOIN artists ar ON a.artist_id = ar.id
+             Where a.id = ?
+             ORDER BY a.created_at DESC",
     )
     .bind(&params.id)
-    .fetch_optional(&*pool)
+    .fetch_optional(&*state.pool)
     .await?
     .ok_or_else(|| AppError::not_found("Album"))?;
 
     // 查询歌曲列表
-    let songs = sqlx::query_as::<_, (String, String, i32, i32, i32, String)>(
-        "SELECT id, title, track_number, disc_number, duration, content_type
-         FROM songs WHERE album_id = ? ORDER BY disc_number, track_number",
-    )
-    .bind(&album.0)
-    .fetch_all(&*pool)
+    let songs = sqlx::query_as::<_, SongDetailDto>(&format!(
+        "{} WHERE al.id = ? ORDER BY disc_number, track_number",
+        state.song_service.detail_sql()
+    ))
+    .bind(&album.id)
+    .fetch_all(&*state.pool)
     .await?;
 
     // 计算总时长
-    let total_duration: i32 = songs.iter().map(|(_, _, _, _, duration, _)| duration).sum();
+    let total_duration: i32 = songs.iter().map(|s| s.duration).sum();
+
+    // tracing::info!("al = {:?}", album);
 
     let song_list = songs
         .into_iter()
-        .map(
-            |(id, title, _track, _disc, duration, content_type)| SongResponse {
-                id,
-                title,
-                artist: album.2.clone(),
-                album: album.1.clone(),
-                genre: None,
-                year: album.4,
-                duration,
-                bit_rate: None,
-                content_type,
-                path: None,
-                track_number: None,
-                disc_number: None,
-                cover_art: None,
-            },
-        )
+        .map(|s| s.into())
         .collect();
 
     let result = AlbumDetailResponse {
         album: AlbumDetail {
-            id: album.0,
-            name: album.1,
-            artist: album.2,
-            artist_id: album.3,
-            cover_art: None,
-            song_count: album.5,
+            id: album.id,
+            name: album.name,
+            artist: album.artist,
+            artist_id: album.artist_id,
+            cover_art: album.cover_art_path,
+            song_count: album.song_count,
             duration: total_duration,
             song: song_list,
         },
@@ -412,52 +401,20 @@ pub async fn get_album(
 
 /// GET /rest/getSong
 pub async fn get_song(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetSongParams>,
 ) -> Result<Json<SubsonicResponse<SongResponse>>, AppError> {
     // 查询歌曲信息
-    let song = sqlx::query_as::<
-        _,
-        (
-            String,
-            String,
-            String,
-            String,
-            Option<String>,
-            Option<i32>,
-            i32,
-            Option<i32>,
-            String,
-            Option<String>,
-        ),
-    >(
-        "SELECT s.id, s.title, ar.name as artist_name, al.name as album_name,
-                s.genre, s.year, s.duration, s.bit_rate, s.content_type, s.file_path
-         FROM songs s
-         JOIN albums al ON s.album_id = al.id
-         JOIN artists ar ON s.artist_id = ar.id
-         WHERE s.id = ?",
-    )
+    let song = sqlx::query_as::<_, SongDetailDto>(&format!(
+        "{} WHERE s.id = ?",
+        state.song_service.detail_sql()
+    ))
     .bind(&params.id)
-    .fetch_optional(&*pool)
+    .fetch_optional(&*state.pool)
     .await?
     .ok_or_else(|| AppError::not_found("SongResponse"))?;
 
-    let result = SongResponse {
-        id: song.0,
-        title: song.1,
-        artist: song.2,
-        album: song.3,
-        genre: song.4,
-        year: song.5,
-        duration: song.6,
-        bit_rate: song.7,
-        content_type: song.8,
-        path: song.9,
-        track_number: None,
-        disc_number: None,
-        cover_art: None,
-    };
+    let result = SongResponse { song: song.into() };
 
     Ok(Json(SubsonicResponse {
         response: ResponseContainer {
@@ -496,13 +453,6 @@ pub struct GetRandomSongsParams {
     pub from_year: Option<i32>,
     pub to_year: Option<i32>,
     pub music_folder_id: Option<String>,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// 获取艺术家信息参数
@@ -522,7 +472,7 @@ pub struct GetArtistInfoParams {
 
 /// GET /rest/getAlbumList - 获取专辑列表
 pub async fn get_album_list(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetAlbumListParams>,
 ) -> Result<Json<SubsonicResponse<crate::models::response::AlbumList>>, AppError> {
     use crate::models::dto::AlbumDetailDto;
@@ -618,7 +568,7 @@ pub async fn get_album_list(
     let albums = sqlx::query_as::<_, AlbumDetailDto>(query)
         .bind(size)
         .bind(offset)
-        .fetch_all(&*pool)
+        .fetch_all(&*state.pool)
         .await?;
 
     let album_responses = AlbumResponse::from_dto_details(albums);
@@ -639,11 +589,11 @@ pub async fn get_album_list(
 
 /// GET /rest/getAlbumList2 - 获取专辑列表 (v2)
 pub async fn get_album_list2(
-    pool: axum::extract::State<Arc<SqlitePool>>,
+    state: axum::extract::State<BrowsingState>,
     params: Query<GetAlbumListParams>,
 ) -> Result<Json<SubsonicResponse<AlbumList2Response>>, AppError> {
     // AlbumList2 与 AlbumList 结构相同，只是API版本不同
-    let result = get_album_list(pool, params).await?;
+    let result = get_album_list(state, params).await?;
 
     Ok(Json(SubsonicResponse {
         response: ResponseContainer {
@@ -661,20 +611,12 @@ pub async fn get_album_list2(
 
 /// GET /rest/getRandomSongs - 获取随机歌曲
 pub async fn get_random_songs(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetRandomSongsParams>,
 ) -> Result<Json<SubsonicResponse<RandomSongsResponse>>, AppError> {
-    use crate::models::dto::SongDto;
-
     let size = params.size.unwrap_or(10).min(500);
 
-    let mut query = String::from(
-        "SELECT s.id, s.title, ar.name as artist, al.name as album, s.duration, s.content_type
-         FROM songs s
-         JOIN albums al ON s.album_id = al.id
-         JOIN artists ar ON s.artist_id = ar.id
-         WHERE 1=1",
-    );
+    let mut query = format!("{} WHERE 1=1", state.song_service.detail_sql());
 
     let mut bind_values: Vec<String> = Vec::new();
 
@@ -695,14 +637,14 @@ pub async fn get_random_songs(
 
     query.push_str(" ORDER BY RANDOM() LIMIT ?");
 
-    let mut query_builder = sqlx::query_as::<_, SongDto>(&query);
+    let mut query_builder = sqlx::query_as::<_, SongDetailDto>(&query);
     for value in &bind_values {
         query_builder = query_builder.bind(value);
     }
     query_builder = query_builder.bind(size);
 
-    let songs = query_builder.fetch_all(&*pool).await?;
-    let song_responses = SongResponse::from_dtos(songs);
+    let songs = query_builder.fetch_all(&*state.pool).await?;
+    let song_responses = Song::from_detail_dtos(songs);
 
     let result = RandomSongsResponse {
         random_songs: RandomSongs {
@@ -722,7 +664,7 @@ pub async fn get_random_songs(
 
 /// GET /rest/getArtistInfo - 获取艺术家信息
 pub async fn get_artist_info(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetArtistInfoParams>,
 ) -> Result<Json<SubsonicResponse<crate::models::response::ArtistInfo>>, AppError> {
     // 查询艺术家基本信息
@@ -730,7 +672,7 @@ pub async fn get_artist_info(
         "SELECT name, music_brainz_id FROM artists WHERE id = ?",
     )
     .bind(&params.id)
-    .fetch_optional(&*pool)
+    .fetch_optional(&*state.pool)
     .await?;
 
     if artist.is_none() {
@@ -758,11 +700,11 @@ pub async fn get_artist_info(
 
 /// GET /rest/getArtistInfo2 - 获取艺术家信息 (v2)
 pub async fn get_artist_info2(
-    pool: axum::extract::State<Arc<SqlitePool>>,
+    state: axum::extract::State<BrowsingState>,
     params: Query<GetArtistInfoParams>,
 ) -> Result<Json<SubsonicResponse<crate::models::response::ArtistInfo>>, AppError> {
     // ArtistInfo2 与 ArtistInfo 结构相同
-    get_artist_info(pool, params).await
+    get_artist_info(state, params).await
 }
 
 /// 获取热门歌曲参数
@@ -797,7 +739,7 @@ pub struct GetSongsByGenreParams {
 
 /// GET /rest/getTopSongs - 获取艺术家热门歌曲
 pub async fn get_top_songs(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetTopSongsParams>,
 ) -> Result<Json<SubsonicResponse<TopSongsResponse>>, AppError> {
     use crate::models::dto::SongDetailDto;
@@ -807,7 +749,7 @@ pub async fn get_top_songs(
     // 根据艺术家名字查询艺术家ID
     let artist = sqlx::query_as::<_, (String,)>("SELECT id FROM artists WHERE name = ?")
         .bind(&params.artist)
-        .fetch_optional(&*pool)
+        .fetch_optional(&*state.pool)
         .await?;
 
     let artist_id = match artist {
@@ -841,10 +783,10 @@ pub async fn get_top_songs(
     )
     .bind(&artist_id)
     .bind(count)
-    .fetch_all(&*pool)
+    .fetch_all(&*state.pool)
     .await?;
 
-    let song_responses: Vec<SongResponse> = songs.into_iter().map(|dto| dto.into()).collect();
+    let song_responses: Vec<Song> = songs.into_iter().map(|dto| dto.into()).collect();
 
     let result = TopSongsResponse {
         top_songs: TopSongs {
@@ -864,7 +806,7 @@ pub async fn get_top_songs(
 
 /// GET /rest/getSongsByGenre - 获取指定流派的歌曲
 pub async fn get_songs_by_genre(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetSongsByGenreParams>,
 ) -> Result<Json<SubsonicResponse<SongsByGenreResponse>>, AppError> {
     use crate::models::dto::SongDetailDto;
@@ -887,13 +829,13 @@ pub async fn get_songs_by_genre(
     .bind(&params.genre)
     .bind(count)
     .bind(offset)
-    .fetch_all(&*pool)
+    .fetch_all(&*state.pool)
     .await?;
 
-    let song_responses: Vec<SongResponse> = songs.into_iter().map(|dto| dto.into()).collect();
+    let song_responses: Vec<Song> = songs.into_iter().map(|dto| dto.into()).collect();
 
     let result = SongsByGenreResponse {
-        songs_by_genre: SongsByGenre {
+        songs_by_genre: SongsResponse {
             song: song_responses,
         },
     };
@@ -910,7 +852,7 @@ pub async fn get_songs_by_genre(
 
 /// GET /rest/getGenres - 获取所有流派
 pub async fn get_genres(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<BrowsingState>,
 ) -> Result<Json<SubsonicResponse<GenresResponse>>, AppError> {
     // 从歌曲和专辑中统计流派及其计数
     let genres = sqlx::query_as::<_, (String, i32, i32)>(
@@ -922,9 +864,9 @@ pub async fn get_genres(
          LEFT JOIN albums a ON s.album_id = a.id
          WHERE COALESCE(s.genre, a.genre) IS NOT NULL
          GROUP BY COALESCE(s.genre, a.genre)
-         ORDER BY COALESCE(s.genre, a.genre)"
+         ORDER BY COALESCE(s.genre, a.genre)",
     )
-    .fetch_all(&*pool)
+    .fetch_all(&*state.pool)
     .await?;
 
     let genre_list: Vec<Genre> = genres
@@ -937,9 +879,7 @@ pub async fn get_genres(
         .collect();
 
     let result = GenresResponse {
-        genres: Genres {
-            genres: genre_list,
-        },
+        genres: Genres { genres: genre_list },
     };
 
     Ok(Json(SubsonicResponse {
@@ -952,7 +892,19 @@ pub async fn get_genres(
     }))
 }
 
-pub fn routes() -> Router<Arc<SqlitePool>> {
+/// 组合状态，用于 browsing 路由
+#[derive(Clone)]
+pub struct BrowsingState {
+    pub pool: Arc<sqlx::SqlitePool>,
+    pub song_service: Arc<SongService>,
+}
+
+pub fn routes(pool: Arc<sqlx::SqlitePool>, song_service: Arc<SongService>) -> Router {
+    let browsing_state = BrowsingState {
+        pool: pool.clone(),
+        song_service,
+    };
+
     Router::new()
         .route("/rest/getIndexes", get(get_indexes))
         .route("/rest/getMusicDirectory", get(get_music_directory))
@@ -968,4 +920,5 @@ pub fn routes() -> Router<Arc<SqlitePool>> {
         .route("/rest/getArtistInfo2", get(get_artist_info2))
         .route("/rest/getTopSongs", get(get_top_songs))
         .route("/rest/getSongsByGenre", get(get_songs_by_genre))
+        .with_state(browsing_state)
 }

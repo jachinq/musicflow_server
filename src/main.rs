@@ -2,7 +2,8 @@
 //!
 //! Subsonic API 兼容的音乐流媒体服务器
 
-use axum::{Router, middleware as axum_middleware};
+use axum::{middleware as axum_middleware, Router};
+use crate::services::{SongService, song_service::CommState};
 use sqlx::query;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -11,11 +12,11 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod config;
 mod database;
 mod error;
-mod models;
-mod utils;
 mod handlers;
 mod middleware;
+mod models;
 mod services;
+mod utils;
 
 use config::AppConfig;
 use database::{get_db_pool, run_migrations, DbPool};
@@ -31,9 +32,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::EnvFilter::new(&config.rust_log))
         .with(
             tracing_subscriber::fmt::layer()
-                .with_file(true)        // 显示文件名
+                .with_file(true) // 显示文件名
                 .with_line_number(true) // 显示行号
-                .with_target(true)      // 显示模块路径(target)
+                .with_target(true), // 显示模块路径(target)
         )
         .init();
 
@@ -60,23 +61,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 7. 创建服务实例
     let pool_arc = Arc::new(pool.clone());
-    let auth_service = Arc::new(AuthService::new(
-        pool.clone(),
-        config.jwt_secret.clone(),
-    ));
-    let scan_service = Arc::new(ScanService::new(
-        pool,
-        config.music_library_path.clone(),
-    ));
+    let auth_service = Arc::new(AuthService::new(pool.clone(), config.jwt_secret.clone()));
+    let scan_service = Arc::new(ScanService::new(pool.clone(), config.music_library_path.clone()));
+    let song_service = Arc::new(SongService::new(pool));
 
     // 8. 构建应用路由
-    let app = build_app(pool_arc, auth_service, scan_service, config.clone());
+    let app = build_app(
+        pool_arc,
+        auth_service,
+        scan_service,
+        song_service,
+        config.clone(),
+    );
 
     // 9. 启动服务器
-    let addr = SocketAddr::from((
-        config.host.parse::<std::net::IpAddr>()?,
-        config.port,
-    ));
+    let addr = SocketAddr::from((config.host.parse::<std::net::IpAddr>()?, config.port));
 
     tracing::info!("Server listening on http://{}", addr);
 
@@ -91,28 +90,27 @@ fn build_app(
     pool: Arc<DbPool>,
     auth_service: Arc<AuthService>,
     scan_service: Arc<ScanService>,
+    song_service: Arc<SongService>,
     config: AppConfig,
 ) -> Router {
     // 创建共享状态
     let _auth_state = auth_service.clone();
+    
+    let comm_state = CommState {
+        pool: pool.clone(),
+        song_service: song_service.clone(),
+    };
 
     // 构建各个模块的路由
     let system_routes = handlers::system::routes();
-    let auth_routes = handlers::auth::routes()
-        .with_state(auth_service);
-    let browsing_routes = handlers::browsing::routes()
-        .with_state(pool.clone());
-    let search_routes = handlers::search::routes()
-        .with_state(pool.clone());
-    let stream_routes = handlers::stream::routes()
-        .with_state(pool.clone());
-    let playlist_routes = handlers::playlist::routes()
-        .with_state(pool.clone());
-    let user_routes = handlers::user::routes()
-        .with_state(pool.clone());
+    let auth_routes = handlers::auth::routes().with_state(auth_service);
+    let browsing_routes = handlers::browsing::routes(pool.clone(), song_service);
+    let search_routes = handlers::search::routes().with_state(comm_state);
+    let stream_routes = handlers::stream::routes().with_state(pool.clone());
+    let playlist_routes = handlers::playlist::routes().with_state(pool.clone());
+    let user_routes = handlers::user::routes().with_state(pool.clone());
     let library_routes = handlers::library::routes(pool.clone(), scan_service);
-    let advanced_routes = handlers::advanced::routes()
-        .with_state(pool.clone());
+    let advanced_routes = handlers::advanced::routes().with_state(pool.clone());
 
     // 合并所有路由
     let app = Router::new()
@@ -141,8 +139,7 @@ fn build_app(
         .layer(tower_http::trace::TraceLayer::new_for_http())
         // 将配置和数据库连接池添加到请求扩展中（供中间件使用）
         .layer(axum::Extension(config))
-        .layer(axum::Extension(pool))
-        ;
+        .layer(axum::Extension(pool));
 
     app
 }
@@ -153,7 +150,7 @@ async fn create_default_admin(pool: &DbPool) -> Result<(), anyhow::Error> {
 
     // 检查 users 表是否存在
     let table_exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='users')"
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='users')",
     )
     .fetch_one(pool)
     .await?;
@@ -186,7 +183,9 @@ async fn create_default_admin(pool: &DbPool) -> Result<(), anyhow::Error> {
         .execute(pool)
         .await?;
 
-        tracing::info!("Default admin created: username='admin', password='admin', api_password='admin'");
+        tracing::info!(
+            "Default admin created: username='admin', password='admin', api_password='admin'"
+        );
         tracing::warn!("Please change the default passwords immediately!");
     }
 

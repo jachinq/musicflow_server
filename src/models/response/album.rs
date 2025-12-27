@@ -6,6 +6,7 @@ use crate::models::dto::{AlbumDto, AlbumDetailDto};
 
 /// 专辑响应 (Subsonic 格式 - 简略)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AlbumResponse {
     pub id: String,
     pub name: String,
@@ -81,6 +82,7 @@ pub struct AlbumDetailResponse {
     pub album: AlbumDetail,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AlbumDetail {
     pub id: String,
     pub name: String,
@@ -90,7 +92,7 @@ pub struct AlbumDetail {
     pub cover_art: Option<String>,
     pub song_count: i32,
     pub duration: i32,
-    pub song: Vec<super::SongResponse>,
+    pub song: Vec<super::Song>,
 }
 
 /// 专辑列表响应

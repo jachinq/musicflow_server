@@ -1,22 +1,16 @@
 //! 搜索端点处理器
 #![allow(dead_code)]
 
-use axum::{
-    Router,
-    routing::get,
-    extract::Query,
-    Json,
-};
-use serde::Deserialize;
-use sqlx::SqlitePool;
-use std::sync::Arc;
 use crate::error::AppError;
+use crate::models::dto::{AlbumDto, AlbumDetailDto, ArtistDto, SongDetailDto, SongDto};
 use crate::models::response::{
-    SubsonicResponse, ResponseContainer, SearchResult, SearchResult2, SearchResult3,
-    SearchResultResponse, SearchResult2Response, SearchResult3Response,
-    ArtistResponse, AlbumResponse, SongResponse,
+    AlbumResponse, ArtistResponse, ResponseContainer, SearchResult, SearchResult2,
+    SearchResult2Response, SearchResult3, SearchResult3Response, SearchResultResponse, Song,
+    SubsonicResponse,
 };
-use crate::models::dto::{ArtistDto, AlbumDto, SongDto};
+use crate::services::song_service::CommState;
+use axum::{extract::Query, routing::get, Json, Router};
+use serde::Deserialize;
 
 /// 搜索参数 (search3)
 #[derive(Debug, Deserialize)]
@@ -76,7 +70,7 @@ pub struct SearchParams {
 
 /// GET /rest/search3
 pub async fn search3(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<CommState>,
     Query(params): Query<Search3Params>,
 ) -> Result<Json<SubsonicResponse<SearchResult3Response>>, AppError> {
     let artist_count = params.artist_count.unwrap_or(20);
@@ -91,53 +85,52 @@ pub async fn search3(
         "SELECT id, name FROM artists
          WHERE name LIKE ?
          ORDER BY name
-         LIMIT ? OFFSET ?"
+         LIMIT ? OFFSET ?",
     )
     .bind(format!("%{}%", params.query))
     .bind(artist_count)
     .bind(artist_offset)
-    .fetch_all(&*pool)
+    .fetch_all(&*state.pool)
     .await?;
 
     let artists: Vec<ArtistResponse> = artist_dtos.into_iter().map(Into::into).collect();
 
     // 搜索专辑 - 使用 DTO
-    let album_dtos = sqlx::query_as::<_, AlbumDto>(
-        "SELECT a.id, a.name, ar.name as artist, a.year, a.song_count
-         FROM albums a
-         JOIN artists ar ON a.artist_id = ar.id
+    let album_dtos = sqlx::query_as::<_, AlbumDetailDto>(
+        "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
+                    a.cover_art_path, a.song_count, a.duration, a.play_count
+             FROM albums a
+             JOIN artists ar ON a.artist_id = ar.id
          WHERE a.name LIKE ? OR ar.name LIKE ?
          ORDER BY a.name
-         LIMIT ? OFFSET ?"
+         LIMIT ? OFFSET ?",
     )
     .bind(format!("%{}%", params.query))
     .bind(format!("%{}%", params.query))
     .bind(album_count)
     .bind(album_offset)
-    .fetch_all(&*pool)
+    .fetch_all(&*state.pool)
     .await?;
 
     let albums: Vec<AlbumResponse> = album_dtos.into_iter().map(Into::into).collect();
 
     // 搜索歌曲 - 使用 DTO
-    let song_dtos = sqlx::query_as::<_, SongDto>(
-        "SELECT s.id, s.title, ar.name as artist, al.name as album, s.duration, s.content_type
-         FROM songs s
-         JOIN albums al ON s.album_id = al.id
-         JOIN artists ar ON s.artist_id = ar.id
+    let song_dtos = sqlx::query_as::<_, SongDetailDto>(&format!(
+        "{}
          WHERE s.title LIKE ? OR al.name LIKE ? OR ar.name LIKE ?
          ORDER BY s.title
-         LIMIT ? OFFSET ?"
-    )
+         LIMIT ? OFFSET ?",
+        state.song_service.detail_sql()
+    ))
     .bind(format!("%{}%", params.query))
     .bind(format!("%{}%", params.query))
     .bind(format!("%{}%", params.query))
     .bind(song_count)
     .bind(song_offset)
-    .fetch_all(&*pool)
+    .fetch_all(&*state.pool)
     .await?;
 
-    let songs: Vec<SongResponse> = song_dtos.into_iter().map(Into::into).collect();
+    let songs: Vec<Song> = song_dtos.into_iter().map(Into::into).collect();
 
     let result = SearchResult3Response {
         search_result3: SearchResult3 {
@@ -159,7 +152,7 @@ pub async fn search3(
 
 /// GET /rest/search2
 pub async fn search2(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<CommState>,
     Query(params): Query<Search2Params>,
 ) -> Result<Json<SubsonicResponse<SearchResult2Response>>, AppError> {
     let artist_count = params.artist_count.unwrap_or(20);
@@ -174,12 +167,12 @@ pub async fn search2(
         "SELECT id, name FROM artists
          WHERE name LIKE ?
          ORDER BY name
-         LIMIT ? OFFSET ?"
+         LIMIT ? OFFSET ?",
     )
     .bind(format!("%{}%", params.query))
     .bind(artist_count)
     .bind(artist_offset)
-    .fetch_all(&*pool)
+    .fetch_all(&*state.pool)
     .await?;
 
     let artists: Vec<ArtistResponse> = artist_dtos.into_iter().map(Into::into).collect();
@@ -191,13 +184,13 @@ pub async fn search2(
          JOIN artists ar ON a.artist_id = ar.id
          WHERE a.name LIKE ? OR ar.name LIKE ?
          ORDER BY a.name
-         LIMIT ? OFFSET ?"
+         LIMIT ? OFFSET ?",
     )
     .bind(format!("%{}%", params.query))
     .bind(format!("%{}%", params.query))
     .bind(album_count)
     .bind(album_offset)
-    .fetch_all(&*pool)
+    .fetch_all(&*state.pool)
     .await?;
 
     let albums: Vec<AlbumResponse> = album_dtos.into_iter().map(Into::into).collect();
@@ -210,17 +203,17 @@ pub async fn search2(
          JOIN artists ar ON s.artist_id = ar.id
          WHERE s.title LIKE ? OR al.name LIKE ? OR ar.name LIKE ?
          ORDER BY s.title
-         LIMIT ? OFFSET ?"
+         LIMIT ? OFFSET ?",
     )
     .bind(format!("%{}%", params.query))
     .bind(format!("%{}%", params.query))
     .bind(format!("%{}%", params.query))
     .bind(song_count)
     .bind(song_offset)
-    .fetch_all(&*pool)
+    .fetch_all(&*state.pool)
     .await?;
 
-    let songs: Vec<SongResponse> = song_dtos.into_iter().map(Into::into).collect();
+    let songs: Vec<Song> = song_dtos.into_iter().map(Into::into).collect();
 
     let result = SearchResult2Response {
         search_result2: SearchResult2 {
@@ -242,7 +235,7 @@ pub async fn search2(
 
 /// GET /rest/search
 pub async fn search(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<CommState>,
     Query(params): Query<SearchParams>,
 ) -> Result<Json<SubsonicResponse<SearchResultResponse>>, AppError> {
     let count = params.count.unwrap_or(20);
@@ -296,7 +289,7 @@ pub async fn search(
             query_builder = query_builder.bind(param);
         }
         query_builder = query_builder.bind(count).bind(offset);
-        let dtos = query_builder.fetch_all(&*pool).await?;
+        let dtos = query_builder.fetch_all(&*state.pool).await?;
         dtos.into_iter().map(Into::into).collect()
     } else {
         vec![]
@@ -327,7 +320,7 @@ pub async fn search(
             }
         }
         query_builder = query_builder.bind(count).bind(offset);
-        let dtos = query_builder.fetch_all(&*pool).await?;
+        let dtos = query_builder.fetch_all(&*state.pool).await?;
         dtos.into_iter().map(Into::into).collect()
     } else {
         vec![]
@@ -362,7 +355,7 @@ pub async fn search(
             }
         }
         query_builder = query_builder.bind(count).bind(offset);
-        let dtos = query_builder.fetch_all(&*pool).await?;
+        let dtos = query_builder.fetch_all(&*state.pool).await?;
         dtos.into_iter().map(Into::into).collect()
     } else {
         vec![]
@@ -386,7 +379,7 @@ pub async fn search(
     }))
 }
 
-pub fn routes() -> Router<Arc<SqlitePool>> {
+pub fn routes() -> Router<CommState> {
     Router::new()
         .route("/rest/search3", get(search3))
         .route("/rest/search2", get(search2))

@@ -7,7 +7,7 @@ use crate::models::dto::{SongDto, SongDetailDto};
 /// 歌曲响应 (Subsonic 格式)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SongResponse {
+pub struct Song {
     pub id: String,
     pub title: String,
     pub artist: String,
@@ -31,7 +31,7 @@ pub struct SongResponse {
 }
 
 // DTO -> Response 转换
-impl From<SongDto> for SongResponse {
+impl From<SongDto> for Song {
     fn from(dto: SongDto) -> Self {
         Self {
             id: dto.id,
@@ -51,7 +51,7 @@ impl From<SongDto> for SongResponse {
     }
 }
 
-impl From<SongDetailDto> for SongResponse {
+impl From<SongDetailDto> for Song {
     fn from(dto: SongDetailDto) -> Self {
         Self {
             id: dto.id,
@@ -66,14 +66,17 @@ impl From<SongDetailDto> for SongResponse {
             path: None,
             track_number: dto.track_number,
             disc_number: dto.disc_number,
-            cover_art: dto.cover_art_path,
+            cover_art: dto.cover_art,
         }
     }
 }
 
 // 批量 DTO -> Response 转换
-impl SongResponse {
+impl Song {
     pub fn from_dtos(dtos: Vec<SongDto>) -> Vec<Self> {
+        dtos.into_iter().map(|dto| dto.into()).collect()
+    }
+    pub fn from_detail_dtos(dtos: Vec<SongDetailDto>) -> Vec<Self> {
         dtos.into_iter().map(|dto| dto.into()).collect()
     }
 }
@@ -86,14 +89,14 @@ pub struct RandomSongsResponse {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RandomSongs {
-    pub song: Vec<SongResponse>,
+    pub song: Vec<Song>,
 }
 
 /// 歌曲列表响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Songs {
     #[serde(rename = "song")]
-    pub songs: Vec<SongResponse>,
+    pub songs: Vec<Song>,
 }
 
 /// 热门歌曲响应
@@ -105,17 +108,22 @@ pub struct TopSongsResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TopSongs {
-    pub song: Vec<SongResponse>,
+    pub song: Vec<Song>,
 }
 
 /// 流派歌曲响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SongsByGenreResponse {
-    pub songs_by_genre: SongsByGenre,
+    pub songs_by_genre: SongsResponse,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SongsByGenre {
-    pub song: Vec<SongResponse>,
+pub struct SongsResponse {
+    pub song: Vec<Song>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SongResponse {
+    pub song: Song,
 }

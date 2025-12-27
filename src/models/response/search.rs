@@ -17,7 +17,7 @@ pub struct SearchResult {
     #[serde(rename = "album")]
     pub album: Vec<super::AlbumResponse>,
     #[serde(rename = "song")]
-    pub song: Vec<super::SongResponse>,
+    pub song: Vec<super::Song>,
 }
 
 /// 搜索结果2响应包装
@@ -35,7 +35,7 @@ pub struct SearchResult2 {
     #[serde(rename = "album")]
     pub album: Vec<super::AlbumResponse>,
     #[serde(rename = "song")]
-    pub song: Vec<super::SongResponse>,
+    pub song: Vec<super::Song>,
 }
 
 /// 搜索结果3响应包装
@@ -53,5 +53,5 @@ pub struct SearchResult3 {
     #[serde(rename = "album")]
     pub album: Vec<super::AlbumResponse>,
     #[serde(rename = "song")]
-    pub song: Vec<super::SongResponse>,
+    pub song: Vec<super::Song>,
 }

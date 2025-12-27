@@ -11,7 +11,7 @@ use std::sync::Arc;
 use sqlx::SqlitePool;
 
 use crate::error::AppError;
-use crate::models::response::{SubsonicResponse, ResponseContainer, PlaylistResponse, PlaylistDetail, Playlists, SongResponse};
+use crate::models::response::{SubsonicResponse, ResponseContainer, PlaylistResponse, PlaylistDetail, Playlists, Song};
 use crate::models::dto::{CreatePlaylistRequest, UpdatePlaylistRequest, SongDto};
 
 /// 通用播放列表参数
@@ -104,7 +104,7 @@ pub async fn get_playlist(
         public,
         song_count,
         duration,
-        entry: SongResponse::from_dtos(songs),
+        entry: Song::from_dtos(songs),
     };
 
     Ok(Json(SubsonicResponse {

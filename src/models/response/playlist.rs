@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use crate::models::dto::PlaylistDto;
-use super::SongResponse;
+use super::Song;
 
 /// 播放列表响应 (Subsonic 格式 - 简略)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,7 +25,7 @@ pub struct PlaylistDetail {
     pub public: bool,
     pub song_count: i32,
     pub duration: i32,
-    pub entry: Vec<SongResponse>,
+    pub entry: Vec<Song>,
 }
 
 /// 播放列表列表响应
