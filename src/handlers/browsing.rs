@@ -13,7 +13,7 @@ use std::sync::Arc;
 use crate::error::AppError;
 use crate::models::response::{
     SubsonicResponse, ResponseContainer, Indexes, Index,
-    Directory, ArtistDetail, AlbumDetail, Artist, Song
+    Directory, ArtistDetail, AlbumDetail, ArtistResponse, SongResponse, AlbumResponse
 };
 
 /// 获取艺术家索引参数
@@ -95,11 +95,11 @@ pub async fn get_indexes(
     .await?;
 
     // 按首字母分组
-    let mut index_map: std::collections::HashMap<String, Vec<Artist>> = std::collections::HashMap::new();
+    let mut index_map: std::collections::HashMap<String, Vec<ArtistResponse>> = std::collections::HashMap::new();
 
     for (id, name) in artists {
         let first_char = name.chars().next().unwrap_or('#').to_uppercase().to_string();
-        let artist = Artist {
+        let artist = ArtistResponse {
             id,
             name: name.clone(),
             cover_art: None,
@@ -245,7 +245,7 @@ pub async fn get_artist(
     .bind(&params.id)
     .fetch_optional(&*pool)
     .await?
-    .ok_or_else(|| AppError::not_found("Artist"))?;
+    .ok_or_else(|| AppError::not_found("ArtistResponse"))?;
 
     // 查询专辑列表
     let albums = sqlx::query_as::<_, (String, String, Option<i32>, Option<i32>)>(
@@ -257,13 +257,18 @@ pub async fn get_artist(
 
     let album_list = albums
         .into_iter()
-        .map(|(id, name, year, song_count)| crate::models::response::Album {
+        .map(|(id, name, year, song_count)| AlbumResponse {
             id,
             name,
-            artist: Some(artist.1.clone()),
+            artist: artist.1.clone(),
+            artist_id: Some(artist.0.clone()),
             year,
             cover_art: None,
             song_count,
+            created: None,
+            duration: None,
+            play_count: None,
+            genre: None,
         })
         .collect::<Vec<_>>();
 
@@ -271,8 +276,8 @@ pub async fn get_artist(
         id: artist.0,
         name: artist.1,
         cover_art: artist.2,
-        album_count: Some(album_list.len() as i32),
-        album: Some(album_list),
+        album_count: album_list.len() as i32,
+        album: album_list,
     };
 
     Ok(Json(SubsonicResponse {
@@ -291,8 +296,8 @@ pub async fn get_album(
     Query(params): Query<GetAlbumParams>,
 ) -> Result<Json<SubsonicResponse<AlbumDetail>>, AppError> {
     // 查询专辑信息
-    let album = sqlx::query_as::<_, (String, String, String, Option<i32>, Option<i32>)>(
-        "SELECT a.id, a.name, ar.name as artist_name, a.year, a.song_count
+    let album = sqlx::query_as::<_, (String, String, String, String, Option<i32>, i32)>(
+        "SELECT a.id, a.name, ar.name as artist_name, a.artist_id, a.year, a.song_count
          FROM albums a
          JOIN artists ar ON a.artist_id = ar.id
          WHERE a.id = ?"
@@ -311,19 +316,25 @@ pub async fn get_album(
     .fetch_all(&*pool)
     .await?;
 
+    // 计算总时长
+    let total_duration: i32 = songs.iter().map(|(_, _, _, _, duration, _)| duration).sum();
+
     let song_list = songs
         .into_iter()
-        .map(|(id, title, _track, _disc, duration, content_type)| Song {
+        .map(|(id, title, _track, _disc, duration, content_type)| SongResponse {
             id,
             title,
             artist: album.2.clone(),
             album: album.1.clone(),
             genre: None,
-            year: None,
+            year: album.4,
             duration,
             bit_rate: None,
             content_type,
             path: None,
+            track_number: None,
+            disc_number: None,
+            cover_art: None,
         })
         .collect();
 
@@ -331,10 +342,11 @@ pub async fn get_album(
         id: album.0,
         name: album.1,
         artist: album.2,
-        year: album.3,
+        artist_id: album.3,
         cover_art: None,
-        song_count: album.4,
-        song: Some(song_list),
+        song_count: album.5,
+        duration: total_duration,
+        song: song_list,
     };
 
     Ok(Json(SubsonicResponse {
@@ -351,7 +363,7 @@ pub async fn get_album(
 pub async fn get_song(
     axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
     Query(params): Query<GetSongParams>,
-) -> Result<Json<SubsonicResponse<Song>>, AppError> {
+) -> Result<Json<SubsonicResponse<SongResponse>>, AppError> {
     // 查询歌曲信息
     let song = sqlx::query_as::<_, (String, String, String, String, Option<String>, Option<i32>, i32, Option<i32>, String, Option<String>)>(
         "SELECT s.id, s.title, ar.name as artist_name, al.name as album_name,
@@ -364,9 +376,9 @@ pub async fn get_song(
     .bind(&params.id)
     .fetch_optional(&*pool)
     .await?
-    .ok_or_else(|| AppError::not_found("Song"))?;
+    .ok_or_else(|| AppError::not_found("SongResponse"))?;
 
-    let result = Song {
+    let result = SongResponse {
         id: song.0,
         title: song.1,
         artist: song.2,
@@ -377,6 +389,9 @@ pub async fn get_song(
         bit_rate: song.7,
         content_type: song.8,
         path: song.9,
+        track_number: None,
+        disc_number: None,
+        cover_art: None,
     };
 
     Ok(Json(SubsonicResponse {

@@ -1,16 +1,12 @@
 //! 数据模型模块
-//! 定义所有数据库实体和 API 响应模型
+//!
+//! 模型层级:
+//! - entities: 数据库实体 (完整表结构,实现 FromRow)
+//! - dto: 数据传输对象 (查询结果,实现 FromRow)
+//! - response: API 响应模型 (Subsonic 格式,不实现 FromRow)
+//!
+//! 数据流: Database → DTO (FromRow) → Response (Into/From) → JSON
 
-pub mod user;
-pub mod artist;
-pub mod album;
-pub mod song;
-pub mod playlist;
+pub mod entities;
+pub mod dto;
 pub mod response;
-pub mod starred;
-pub mod scrobble;
-pub mod rating;
-
-// 导出数据库实体类型（使用 Db 前缀避免与API响应类型冲突）
-
-// 导出 Subsonic API 响应类型

@@ -11,9 +11,8 @@ use std::sync::Arc;
 use sqlx::SqlitePool;
 
 use crate::error::AppError;
-use crate::models::response::{SubsonicResponse, ResponseContainer};
-use crate::models::playlist::{PlaylistResponse, PlaylistDetail, Playlists, CreatePlaylistRequest, UpdatePlaylistRequest};
-use crate::models::song::SongResponse;
+use crate::models::response::{SubsonicResponse, ResponseContainer, PlaylistResponse, PlaylistDetail, Playlists, SongResponse};
+use crate::models::dto::{CreatePlaylistRequest, UpdatePlaylistRequest, SongDto};
 
 /// 通用播放列表参数
 #[derive(Debug, Deserialize)]
@@ -85,7 +84,7 @@ pub async fn get_playlist(
         .ok_or_else(|| AppError::not_found("Playlist"))?;
 
     // 获取播放列表中的歌曲
-    let songs = sqlx::query_as::<_, SongResponse>(
+    let songs = sqlx::query_as::<_, SongDto>(
         "SELECT s.id, s.title, ar.name as artist, al.name as album, s.duration, s.content_type
          FROM playlist_songs ps
          JOIN songs s ON ps.song_id = s.id
@@ -105,7 +104,7 @@ pub async fn get_playlist(
         public,
         song_count,
         duration,
-        entry: songs,
+        entry: SongResponse::from_dtos(songs),
     };
 
     Ok(Json(SubsonicResponse {

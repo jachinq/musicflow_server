@@ -4,10 +4,8 @@
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 use sqlx::SqlitePool;
+use crate::models::entities::{Album, Artist, Song};
 use crate::error::AppError;
-use crate::models::artist::Artist;
-use crate::models::album::Album;
-use crate::models::song::Song;
 
 /// 音乐库扫描服务
 pub struct ScanService {

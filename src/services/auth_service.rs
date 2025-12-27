@@ -1,7 +1,8 @@
 //! 认证服务
 #![allow(dead_code)]
 
-use crate::models::user::{User, CreateUserRequest, LoginRequest};
+use crate::models::dto::{CreateUserRequest, LoginRequest};
+use crate::models::entities::User;
 use crate::utils::{hash_password, verify_password, generate_jwt_token, generate_subsonic_token, generate_salt};
 use crate::error::AppError;
 use sqlx::SqlitePool;

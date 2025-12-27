@@ -1,4 +1,4 @@
-//! 评分模型
+//! 评分数据库实体
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
@@ -6,8 +6,8 @@ use sqlx::FromRow;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
-/// 评分实体
-#[derive(Debug, Serialize, Deserialize, FromRow)]
+/// 评分实体 (完整数据库表结构)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Rating {
     pub id: String,
     pub user_id: String,
@@ -15,32 +15,8 @@ pub struct Rating {
     pub album_id: Option<String>,
     pub song_id: Option<String>,
     pub rating: i32,
-    #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,
-    #[serde(rename = "updatedAt")]
     pub updated_at: DateTime<Utc>,
-}
-
-/// 评分响应（Subsonic 格式）
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RatingResponse {
-    #[serde(rename = "@id")]
-    pub id: String,
-    #[serde(rename = "@rating")]
-    pub rating: i32,
-}
-
-/// 设置评分请求
-#[derive(Debug, Deserialize)]
-pub struct SetRatingRequest {
-    pub id: String,
-    pub rating: i32,
-}
-
-/// 获取评分请求
-#[derive(Debug, Deserialize)]
-pub struct GetRatingRequest {
-    pub id: String,
 }
 
 impl Rating {

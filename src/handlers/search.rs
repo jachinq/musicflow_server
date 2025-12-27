@@ -13,10 +13,9 @@ use std::sync::Arc;
 use crate::error::AppError;
 use crate::models::response::{
     SubsonicResponse, ResponseContainer, SearchResult, SearchResult2, SearchResult3,
+    ArtistResponse, AlbumResponse, SongResponse,
 };
-use crate::models::artist::ArtistResponse;
-use crate::models::album::AlbumResponse;
-use crate::models::song::SongResponse;
+use crate::models::dto::{ArtistDto, AlbumDto, SongDto};
 
 /// 搜索参数 (search3)
 #[derive(Debug, Deserialize)]
@@ -86,8 +85,8 @@ pub async fn search3(
     let song_count = params.song_count.unwrap_or(20);
     let song_offset = params.song_offset.unwrap_or(0);
 
-    // 搜索艺术家
-    let artists = sqlx::query_as::<_, ArtistResponse>(
+    // 搜索艺术家 - 使用 DTO
+    let artist_dtos = sqlx::query_as::<_, ArtistDto>(
         "SELECT id, name FROM artists
          WHERE name LIKE ?
          ORDER BY name
@@ -99,8 +98,10 @@ pub async fn search3(
     .fetch_all(&*pool)
     .await?;
 
-    // 搜索专辑
-    let albums = sqlx::query_as::<_, AlbumResponse>(
+    let artists: Vec<ArtistResponse> = artist_dtos.into_iter().map(Into::into).collect();
+
+    // 搜索专辑 - 使用 DTO
+    let album_dtos = sqlx::query_as::<_, AlbumDto>(
         "SELECT a.id, a.name, ar.name as artist, a.year, a.song_count
          FROM albums a
          JOIN artists ar ON a.artist_id = ar.id
@@ -115,8 +116,10 @@ pub async fn search3(
     .fetch_all(&*pool)
     .await?;
 
-    // 搜索歌曲
-    let songs = sqlx::query_as::<_, SongResponse>(
+    let albums: Vec<AlbumResponse> = album_dtos.into_iter().map(Into::into).collect();
+
+    // 搜索歌曲 - 使用 DTO
+    let song_dtos = sqlx::query_as::<_, SongDto>(
         "SELECT s.id, s.title, ar.name as artist, al.name as album, s.duration, s.content_type
          FROM songs s
          JOIN albums al ON s.album_id = al.id
@@ -132,6 +135,8 @@ pub async fn search3(
     .bind(song_offset)
     .fetch_all(&*pool)
     .await?;
+
+    let songs: Vec<SongResponse> = song_dtos.into_iter().map(Into::into).collect();
 
     let result = SearchResult3 {
         artist: artists,
@@ -161,8 +166,8 @@ pub async fn search2(
     let song_count = params.song_count.unwrap_or(20);
     let song_offset = params.song_offset.unwrap_or(0);
 
-    // 搜索艺术家
-    let artists = sqlx::query_as::<_, ArtistResponse>(
+    // 搜索艺术家 - 使用 DTO
+    let artist_dtos = sqlx::query_as::<_, ArtistDto>(
         "SELECT id, name FROM artists
          WHERE name LIKE ?
          ORDER BY name
@@ -174,8 +179,10 @@ pub async fn search2(
     .fetch_all(&*pool)
     .await?;
 
-    // 搜索专辑
-    let albums = sqlx::query_as::<_, AlbumResponse>(
+    let artists: Vec<ArtistResponse> = artist_dtos.into_iter().map(Into::into).collect();
+
+    // 搜索专辑 - 使用 DTO
+    let album_dtos = sqlx::query_as::<_, AlbumDto>(
         "SELECT a.id, a.name, ar.name as artist, a.year, a.song_count
          FROM albums a
          JOIN artists ar ON a.artist_id = ar.id
@@ -190,8 +197,10 @@ pub async fn search2(
     .fetch_all(&*pool)
     .await?;
 
-    // 搜索歌曲
-    let songs = sqlx::query_as::<_, SongResponse>(
+    let albums: Vec<AlbumResponse> = album_dtos.into_iter().map(Into::into).collect();
+
+    // 搜索歌曲 - 使用 DTO
+    let song_dtos = sqlx::query_as::<_, SongDto>(
         "SELECT s.id, s.title, ar.name as artist, al.name as album, s.duration, s.content_type
          FROM songs s
          JOIN albums al ON s.album_id = al.id
@@ -207,6 +216,8 @@ pub async fn search2(
     .bind(song_offset)
     .fetch_all(&*pool)
     .await?;
+
+    let songs: Vec<SongResponse> = song_dtos.into_iter().map(Into::into).collect();
 
     let result = SearchResult2 {
         artist: artists,
@@ -261,7 +272,7 @@ pub async fn search(
 
     let _where_clause = conditions.join(" AND ");
 
-    // 搜索艺术家
+    // 搜索艺术家 - 使用 DTO
     let artists = if params.artist.is_some() || params.any.is_some() {
         let query = format!(
             "SELECT DISTINCT ar.id, ar.name
@@ -275,17 +286,18 @@ pub async fn search(
                 "ar.name LIKE ?"
             }
         );
-        let mut query_builder = sqlx::query_as::<_, ArtistResponse>(&query);
+        let mut query_builder = sqlx::query_as::<_, ArtistDto>(&query);
         for param in &query_params {
             query_builder = query_builder.bind(param);
         }
         query_builder = query_builder.bind(count).bind(offset);
-        query_builder.fetch_all(&*pool).await?
+        let dtos = query_builder.fetch_all(&*pool).await?;
+        dtos.into_iter().map(Into::into).collect()
     } else {
         vec![]
     };
 
-    // 搜索专辑
+    // 搜索专辑 - 使用 DTO
     let albums = if params.album.is_some() || params.any.is_some() {
         let query = format!(
             "SELECT DISTINCT al.id, al.name, ar.name as artist, al.year, al.song_count
@@ -300,7 +312,7 @@ pub async fn search(
                 "al.name LIKE ?"
             }
         );
-        let mut query_builder = sqlx::query_as::<_, AlbumResponse>(&query);
+        let mut query_builder = sqlx::query_as::<_, AlbumDto>(&query);
         for param in &query_params {
             query_builder = query_builder.bind(param);
         }
@@ -310,12 +322,13 @@ pub async fn search(
             }
         }
         query_builder = query_builder.bind(count).bind(offset);
-        query_builder.fetch_all(&*pool).await?
+        let dtos = query_builder.fetch_all(&*pool).await?;
+        dtos.into_iter().map(Into::into).collect()
     } else {
         vec![]
     };
 
-    // 搜索歌曲
+    // 搜索歌曲 - 使用 DTO
     let songs = if params.title.is_some() || params.any.is_some() {
         let query = format!(
             "SELECT DISTINCT s.id, s.title, ar.name as artist, al.name as album, s.duration, s.content_type
@@ -331,7 +344,7 @@ pub async fn search(
                 "s.title LIKE ?"
             }
         );
-        let mut query_builder = sqlx::query_as::<_, SongResponse>(&query);
+        let mut query_builder = sqlx::query_as::<_, SongDto>(&query);
         for param in &query_params {
             query_builder = query_builder.bind(param);
         }
@@ -344,7 +357,8 @@ pub async fn search(
             }
         }
         query_builder = query_builder.bind(count).bind(offset);
-        query_builder.fetch_all(&*pool).await?
+        let dtos = query_builder.fetch_all(&*pool).await?;
+        dtos.into_iter().map(Into::into).collect()
     } else {
         vec![]
     };

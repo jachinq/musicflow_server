@@ -12,8 +12,9 @@ use std::sync::Arc;
 use sqlx::SqlitePool;
 
 use crate::error::AppError;
-use crate::models::response::{SubsonicResponse, ResponseContainer};
-use crate::models::user::{UserResponse, UsersResponse, CreateUserRequest, UpdateUserRequest, ChangePasswordRequest};
+use crate::models::response::{SubsonicResponse, ResponseContainer, UserResponse, UsersResponse};
+use crate::models::dto::{CreateUserRequest, UpdateUserRequest, ChangePasswordRequest};
+use crate::models::entities::User;
 use crate::services::AuthService;
 
 /// 通用用户参数
@@ -37,7 +38,7 @@ pub async fn get_user(
     let username = params.username.as_deref().unwrap_or(&params.u);
 
     // 查询用户
-    let user = sqlx::query_as::<_, crate::models::user::User>(
+    let user = sqlx::query_as::<_, User>(
         "SELECT * FROM users WHERE username = ?"
     )
     .bind(username)
@@ -76,7 +77,7 @@ pub async fn get_users(
     }
 
     // 获取所有用户
-    let users = sqlx::query_as::<_, crate::models::user::User>(
+    let users = sqlx::query_as::<_, User>(
         "SELECT * FROM users ORDER BY username"
     )
     .fetch_all(&*pool)

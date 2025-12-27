@@ -9,7 +9,7 @@ use axum::{
 };
 use serde::Deserialize;
 use crate::services::{AuthService, UserWithToken};
-use crate::models::user::{CreateUserRequest, LoginRequest};
+use crate::models::dto::{CreateUserRequest, LoginRequest};
 use crate::error::AppError;
 use std::sync::Arc;
 

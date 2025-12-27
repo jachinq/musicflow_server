@@ -1,4 +1,4 @@
-//! 播放记录模型
+//! 播放记录数据库实体
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
@@ -6,24 +6,15 @@ use sqlx::FromRow;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
-/// 播放记录实体
-#[derive(Debug, Serialize, Deserialize, FromRow)]
+/// 播放记录实体 (完整数据库表结构)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Scrobble {
     pub id: String,
     pub user_id: String,
     pub song_id: String,
     pub timestamp: DateTime<Utc>,
     pub submission: bool,
-    #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,
-}
-
-/// 播放记录请求
-#[derive(Debug, Deserialize)]
-pub struct ScrobbleRequest {
-    pub id: String,
-    pub submission: Option<bool>,
-    pub time: Option<i64>,
 }
 
 impl Scrobble {

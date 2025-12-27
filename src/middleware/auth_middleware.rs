@@ -11,7 +11,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
-use crate::models::user::User;
+use crate::models::entities::User;
 use crate::utils::verify_password;
 
 /// 标准错误响应结构

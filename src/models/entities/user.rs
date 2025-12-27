@@ -1,0 +1,61 @@
+//! 用户数据库实体
+#![allow(dead_code)]
+
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+use uuid::Uuid;
+use chrono::{DateTime, Utc};
+
+/// 用户实体 (完整数据库表结构)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct User {
+    pub id: String,
+    pub username: String,
+    pub password_hash: String,
+    pub api_password: Option<String>,  // Subsonic API 密码(明文,用于 MD5 token 验证)
+    pub email: String,
+    pub is_admin: bool,
+    pub max_bitrate: i32,
+    pub download_role: bool,
+    pub upload_role: bool,
+    pub playlist_role: bool,
+    pub cover_art_role: bool,
+    pub comment_role: bool,
+    pub podcast_role: bool,
+    pub share_role: bool,
+    pub video_conversion_role: bool,
+    pub scrobbling_enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl User {
+    /// 创建新用户（用于数据库插入）
+    pub fn new(
+        username: String,
+        password_hash: String,
+        email: String,
+        is_admin: bool,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            username: username.clone(),
+            password_hash,
+            api_password: Some(username),  // 默认使用用户名作为 API 密码
+            email,
+            is_admin,
+            max_bitrate: 320,
+            download_role: true,
+            upload_role: false,
+            playlist_role: true,
+            cover_art_role: true,
+            comment_role: false,
+            podcast_role: false,
+            share_role: true,
+            video_conversion_role: false,
+            scrobbling_enabled: true,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+}

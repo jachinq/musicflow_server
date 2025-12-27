@@ -1,32 +1,11 @@
-//! 专辑模型
+//! 专辑响应模型 (Subsonic API 格式)
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
-use uuid::Uuid;
-use chrono::{DateTime, Utc};
+use crate::models::dto::{AlbumDto, AlbumDetailDto};
 
-/// 专辑实体
-#[derive(Debug, Serialize, Deserialize, FromRow)]
-pub struct Album {
-    pub id: String,
-    pub artist_id: String,
-    pub name: String,
-    pub year: Option<i32>,
-    pub genre: Option<String>,
-    pub cover_art_path: Option<String>,
-    pub path: String,
-    pub song_count: i32,
-    pub duration: i32,
-    pub play_count: i32,
-    #[serde(rename = "createdAt")]
-    pub created_at: DateTime<Utc>,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: DateTime<Utc>,
-}
-
-/// 专辑响应（Subsonic 格式 - 简略）
-#[derive(Debug, Serialize, Deserialize, FromRow)]
+/// 专辑响应 (Subsonic 格式 - 简略)
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlbumResponse {
     #[serde(rename = "@id")]
     pub id: String,
@@ -60,8 +39,55 @@ pub struct AlbumResponse {
     pub genre: Option<String>,
 }
 
-/// 专辑详情（包含歌曲列表）
-#[derive(Debug, Serialize, Deserialize)]
+// DTO -> Response 转换
+impl From<AlbumDto> for AlbumResponse {
+    fn from(dto: AlbumDto) -> Self {
+        Self {
+            id: dto.id,
+            name: dto.name,
+            artist: dto.artist,
+            artist_id: None,
+            cover_art: None,
+            song_count: Some(dto.song_count),
+            created: None,
+            duration: None,
+            play_count: None,
+            year: dto.year,
+            genre: None,
+        }
+    }
+}
+
+impl From<AlbumDetailDto> for AlbumResponse {
+    fn from(dto: AlbumDetailDto) -> Self {
+        Self {
+            id: dto.id,
+            name: dto.name,
+            artist: dto.artist,
+            artist_id: Some(dto.artist_id),
+            cover_art: dto.cover_art_path,
+            song_count: Some(dto.song_count),
+            created: None,
+            duration: Some(dto.duration),
+            play_count: Some(dto.play_count),
+            year: dto.year,
+            genre: dto.genre,
+        }
+    }
+}
+
+impl AlbumResponse {
+    pub fn from_dtos(dtos: Vec<AlbumDto>) -> Vec<Self> {
+        dtos.into_iter().map(|dto| AlbumResponse::from(dto)).collect()
+    }
+
+    pub fn from_dto_details(dtos: Vec<AlbumDetailDto>) -> Vec<Self> {
+        dtos.into_iter().map(|dto| AlbumResponse::from(dto)).collect()
+    }    
+}
+
+/// 专辑详情 (包含歌曲列表)
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlbumDetail {
     #[serde(rename = "@id")]
     pub id: String,
@@ -78,45 +104,19 @@ pub struct AlbumDetail {
     pub song_count: i32,
     #[serde(rename = "@duration")]
     pub duration: i32,
-    pub song: Vec<super::song::SongResponse>,
+    pub song: Vec<super::SongResponse>,
 }
 
 /// 专辑列表响应
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlbumList {
     #[serde(rename = "album")]
     pub albums: Vec<AlbumResponse>,
 }
 
-/// 专辑列表2（包含更多详情）
-#[derive(Debug, Serialize, Deserialize)]
+/// 专辑列表2 (包含更多详情)
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlbumList2 {
     #[serde(rename = "album")]
     pub albums: Vec<AlbumResponse>,
-}
-
-impl Album {
-    pub fn new(
-        artist_id: String,
-        name: String,
-        path: String,
-        year: Option<i32>,
-        genre: Option<String>,
-        cover_art_path: Option<String>,
-    ) -> Self {
-        Self {
-            id: Uuid::new_v4().to_string(),
-            artist_id,
-            name,
-            year,
-            genre,
-            cover_art_path,
-            path,
-            song_count: 0,
-            duration: 0,
-            play_count: 0,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        }
-    }
 }
