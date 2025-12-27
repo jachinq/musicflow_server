@@ -1,16 +1,16 @@
 //! 音乐库扫描服务
 #![allow(dead_code)]
 
-use std::path::{Path, PathBuf};
-use std::fs::File;
-use walkdir::WalkDir;
+use crate::error::AppError;
+use crate::models::entities::{Album, Artist, Song};
 use sqlx::SqlitePool;
+use std::fs::File;
+use std::path::{Path, PathBuf};
+use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::{MetadataOptions, StandardTagKey};
 use symphonia::core::probe::Hint;
-use symphonia::core::formats::FormatOptions;
-use crate::models::entities::{Album, Artist, Song};
-use crate::error::AppError;
+use walkdir::WalkDir;
 
 /// 音乐库扫描服务
 pub struct ScanService {
@@ -42,6 +42,8 @@ struct AudioMetadata {
     bit_rate: Option<i32>,
     sample_rate: Option<i32>,
     channels: Option<u8>,
+    content_type: String,
+    file_size: Option<u64>,
 }
 
 impl ScanService {
@@ -65,10 +67,17 @@ impl ScanService {
             .filter(|e| e.file_type().is_file())
         {
             let path = entry.path();
-            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+            let ext = path
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_lowercase();
 
             // 支持的音频格式
-            if matches!(ext.as_str(), "mp3" | "flac" | "wav" | "m4a" | "aac" | "ogg" | "opus") {
+            if matches!(
+                ext.as_str(),
+                "mp3" | "flac" | "wav" | "m4a" | "aac" | "ogg" | "opus"
+            ) {
                 match self.process_audio_file(path).await {
                     Ok(_) => {
                         result.songs += 1;
@@ -98,27 +107,50 @@ impl ScanService {
 
     /// 处理单个音频文件
     async fn process_audio_file(&self, path: &Path) -> Result<(), AppError> {
+        let metadata: AudioMetadata = self.read_audio_metadata(path).await?;
+        // 保存到数据库
+        self.save_to_database(
+            &metadata.artist.as_deref().unwrap_or("Unknown"),
+            &metadata.album.as_deref().unwrap_or("Unknown"),
+            &metadata.title.as_deref().unwrap_or("Unknown"),
+            path,
+            metadata.duration_secs as i32,
+            metadata.bit_rate,
+            metadata.year,
+            metadata.genre.as_deref(),
+            metadata.track_number,
+            metadata.disc_number,
+            &metadata.content_type,
+            metadata.file_size,
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// 读取单个音频文件元数据
+    async fn read_audio_metadata(&self, path: &Path) -> Result<AudioMetadata, AppError> {
         // 使用 Symphonia 读取音频元数据
         let metadata = self.extract_audio_metadata(path)?;
 
         // 使用元数据中的信息,如果不存在则使用文件路径推断
-        let artist_name = metadata.artist
+        let artist_name = metadata
+            .artist
             .or_else(|| metadata.album_artist.clone())
             .unwrap_or_else(|| self.extract_artist_from_path(path));
 
-        let album_name = metadata.album
+        let album_name = metadata
+            .album
             .unwrap_or_else(|| self.extract_album_from_path(path));
 
-        let title = metadata.title
-            .unwrap_or_else(|| path.file_stem()
+        let title = metadata.title.unwrap_or_else(|| {
+            path.file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("Unknown")
-                .to_string());
+                .to_string()
+        });
 
         // 获取文件大小和 MIME 类型
-        let file_size = std::fs::metadata(path)
-            .map(|m| m.len())
-            .ok();
+        let file_size = std::fs::metadata(path).map(|m| m.len()).ok();
 
         let content_type = self.get_content_type(path);
 
@@ -133,23 +165,22 @@ impl ScanService {
             metadata.bit_rate
         };
 
-        // 保存到数据库
-        self.save_to_database(
-            &artist_name,
-            &album_name,
-            &title,
-            path,
-            metadata.duration_secs as i32,
+        Ok(AudioMetadata {
+            title: Some(title),
+            artist: Some(artist_name),
+            album: Some(album_name),
+            album_artist: metadata.album_artist,
+            genre: metadata.genre,
+            year: metadata.year,
+            track_number: metadata.track_number,
+            disc_number: metadata.disc_number,
+            duration_secs: metadata.duration_secs,
             bit_rate,
-            metadata.year,
-            metadata.genre.as_deref(),
-            metadata.track_number,
-            metadata.disc_number,
-            &content_type,
+            sample_rate: metadata.sample_rate,
+            channels: metadata.channels,
+            content_type,
             file_size,
-        ).await?;
-
-        Ok(())
+        })
     }
 
     /// 使用 Symphonia 提取音频元数据
@@ -169,11 +200,17 @@ impl ScanService {
 
         // 探测格式
         let probed = symphonia::default::get_probe()
-            .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+            .format(
+                &hint,
+                mss,
+                &FormatOptions::default(),
+                &MetadataOptions::default(),
+            )
             .map_err(|e| AppError::ValidationError(format!("无法探测音频格式: {}", e)))?;
 
         let mut format = probed.format;
-        let track = format.default_track()
+        let track = format
+            .default_track()
             .ok_or_else(|| AppError::ValidationError("没有找到音频轨道".to_string()))?;
 
         let mut metadata = AudioMetadata::default();
@@ -219,8 +256,7 @@ impl ScanService {
                     Some(StandardTagKey::Genre) => {
                         metadata.genre = Some(tag.value.to_string());
                     }
-                    Some(StandardTagKey::Date) |
-                    Some(StandardTagKey::ReleaseDate) => {
+                    Some(StandardTagKey::Date) | Some(StandardTagKey::ReleaseDate) => {
                         // 尝试解析年份
                         if let Ok(year) = tag.value.to_string().parse::<i32>() {
                             metadata.year = Some(year);
@@ -280,7 +316,8 @@ impl ScanService {
 
     /// 根据文件扩展名获取 MIME 类型
     fn get_content_type(&self, path: &Path) -> String {
-        let ext = path.extension()
+        let ext = path
+            .extension()
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_lowercase();
@@ -294,7 +331,8 @@ impl ScanService {
             "ogg" => "audio/ogg",
             "opus" => "audio/opus",
             _ => "audio/mpeg",
-        }.to_string()
+        }
+        .to_string()
     }
 
     /// 保存到数据库
@@ -318,7 +356,9 @@ impl ScanService {
         let artist_id = self.get_or_create_artist(artist_name).await?;
 
         // 插入或更新专辑
-        let album_id = self.get_or_create_album(&artist_id, album_name, year, genre).await?;
+        let album_id = self
+            .get_or_create_album(&artist_id, album_name, year, genre)
+            .await?;
 
         // 插入或更新歌曲
         self.get_or_create_song(
@@ -334,7 +374,8 @@ impl ScanService {
             path,
             content_type,
             file_size,
-        ).await?;
+        )
+        .await?;
 
         Ok(())
     }
@@ -342,12 +383,10 @@ impl ScanService {
     /// 获取或创建艺术家
     async fn get_or_create_artist(&self, name: &str) -> Result<String, AppError> {
         // 先尝试查找
-        let existing = sqlx::query_scalar::<_, String>(
-            "SELECT id FROM artists WHERE name = ?"
-        )
-        .bind(name)
-        .fetch_optional(&self.pool)
-        .await?;
+        let existing = sqlx::query_scalar::<_, String>("SELECT id FROM artists WHERE name = ?")
+            .bind(name)
+            .fetch_optional(&self.pool)
+            .await?;
 
         if let Some(id) = existing {
             return Ok(id);
@@ -381,7 +420,7 @@ impl ScanService {
     ) -> Result<String, AppError> {
         // 先尝试查找
         let existing = sqlx::query_scalar::<_, String>(
-            "SELECT id FROM albums WHERE artist_id = ? AND name = ?"
+            "SELECT id FROM albums WHERE artist_id = ? AND name = ?",
         )
         .bind(artist_id)
         .bind(name)
@@ -404,7 +443,7 @@ impl ScanService {
         sqlx::query(
             "INSERT INTO albums (id, artist_id, name, year, genre, cover_art_path, path,
              song_count, duration, play_count, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)"
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)",
         )
         .bind(&album.id)
         .bind(&album.artist_id)
@@ -440,17 +479,11 @@ impl ScanService {
     ) -> Result<(), AppError> {
         // 先尝试查找
         let existing = sqlx::query_scalar::<_, String>(
-            "SELECT id FROM songs WHERE album_id = ? AND title = ? AND file_path = ?"
+            "SELECT id FROM songs WHERE album_id = ? AND title = ? AND file_path = ?",
         )
-        .bind(album_id)
-        .bind(title)
         .bind(path_to_string(path))
         .fetch_optional(&self.pool)
         .await?;
-
-        if existing.is_some() {
-            return Ok(());
-        }
 
         // 创建新歌曲
         let song = Song::new(
@@ -468,11 +501,43 @@ impl ScanService {
             file_size.map(|s| s as i64),
         );
 
+        if existing.is_some() {
+            // 歌曲已存在，进行更新
+            sqlx::query(
+                "UPDATE songs                
+                 SET title = ?,
+                     track_number = ?,
+                     disc_number = ?,
+                     duration = ?,
+                     bit_rate = ?,
+                     genre = ?,
+                     year = ?,
+                     content_type = ?,
+                     file_size = ?,
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE file_path = ?",
+            )
+            .bind(&song.title)
+            .bind(&song.track_number)
+            .bind(&song.disc_number)
+            .bind(&song.duration)
+            .bind(&song.bit_rate)
+            .bind(&song.genre)
+            .bind(&song.year)
+            .bind(&song.content_type)
+            .bind(&song.file_size)
+            .bind(song.updated_at)
+            .bind(path_to_string(path))
+            .execute(&self.pool)
+            .await?;
+            return Ok(());
+        }
+
         sqlx::query(
             "INSERT INTO songs (id, album_id, artist_id, title, track_number, disc_number,
              duration, bit_rate, genre, year, content_type, file_path, file_size, play_count,
              created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)"
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
         )
         .bind(&song.id)
         .bind(&song.album_id)
@@ -497,7 +562,7 @@ impl ScanService {
             "UPDATE albums
              SET song_count = (SELECT COUNT(*) FROM songs WHERE album_id = ?),
                  updated_at = CURRENT_TIMESTAMP
-             WHERE id = ?"
+             WHERE id = ?",
         )
         .bind(album_id)
         .bind(album_id)
@@ -510,4 +575,64 @@ impl ScanService {
 
 fn path_to_string(path: &Path) -> String {
     path.to_string_lossy().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// 手动测试入口:可以通过环境变量指定音频文件路径
+    ///
+    /// # 使用示例
+    /// ```
+    /// TEST_AUDIO_FILE=/path/to/your/audio.mp3 cargo test test_read_custom_audio -- --nocapture
+    /// ```
+    #[tokio::test]
+    async fn test_read_custom_audio() {
+        let test_file = std::env::var("TEST_AUDIO_FILE")
+            .unwrap_or_else(|_| "./music/阿杜 - 他一定很爱你.flac".to_string());
+
+        if test_file.is_empty() {
+            return;
+        }
+
+        let test_path = PathBuf::from(&test_file);
+        if !test_path.exists() {
+            println!("测试文件不存在: {:?}", test_path);
+            return;
+        }
+
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("创建测试数据库失败");
+
+        let scan_service = ScanService::new(pool, PathBuf::from("./"));
+
+        match scan_service.read_audio_metadata(&test_path).await {
+            Ok(metadata) => {
+                println!("\n========== 音频文件元数据 ==========");
+                println!("文件路径: {}", test_file);
+                println!("标题: {:?}", metadata.title);
+                println!("艺术家: {:?}", metadata.artist);
+                println!("专辑: {:?}", metadata.album);
+                println!("专辑艺术家: {:?}", metadata.album_artist);
+                println!("流派: {:?}", metadata.genre);
+                println!("年份: {:?}", metadata.year);
+                println!("音轨号: {:?}", metadata.track_number);
+                println!("光盘号: {:?}", metadata.disc_number);
+                println!("时长: {} 秒", metadata.duration_secs);
+                println!("比特率: {:?} bps", metadata.bit_rate);
+                println!("采样率: {:?} Hz", metadata.sample_rate);
+                println!("声道数: {:?}", metadata.channels);
+                println!("内容类型: {}", metadata.content_type);
+                println!("文件大小: {:?} bytes", metadata.file_size);
+                println!("=====================================\n");
+            }
+            Err(e) => {
+                eprintln!("读取音频元数据失败: {}", e);
+                panic!("测试失败");
+            }
+        }
+    }
 }
