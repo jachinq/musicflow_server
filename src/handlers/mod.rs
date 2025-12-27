@@ -6,5 +6,6 @@ pub mod system;
 pub mod stream;
 pub mod playlist;
 pub mod user;
+pub mod advanced;
 
 // 注意：为了避免命名冲突，不使用glob导入，而是直接使用模块名

@@ -77,21 +77,18 @@ impl AlbumResponse {
 
 /// 专辑详情 (包含歌曲列表)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlbumDetailResponse {
+    pub album: AlbumDetail,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlbumDetail {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@name")]
     pub name: String,
-    #[serde(rename = "@artist")]
     pub artist: String,
-    #[serde(rename = "@artistId")]
     pub artist_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@coverArt")]
     pub cover_art: Option<String>,
-    #[serde(rename = "@songCount")]
     pub song_count: i32,
-    #[serde(rename = "@duration")]
     pub duration: i32,
     pub song: Vec<super::SongResponse>,
 }
@@ -104,6 +101,11 @@ pub struct AlbumList {
 }
 
 /// 专辑列表2 (包含更多详情)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlbumList2Response {
+    pub album_list2: AlbumList2,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlbumList2 {
     #[serde(rename = "album")]

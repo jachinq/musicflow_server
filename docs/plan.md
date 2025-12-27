@@ -480,7 +480,6 @@ pub struct SubsonicError {
 // 艺术家索引
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Indexes {
-    #[serde(rename = "@lastModified")]
     pub last_modified: i64,
     #[serde(rename = "index")]
     pub indexes: Vec<Index>,
@@ -488,51 +487,36 @@ pub struct Indexes {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Index {
-    #[serde(rename = "@name")]
     pub name: String,
     pub artist: Vec<Artist>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Artist {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@name")]
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@coverArt")]
     pub cover_art: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@albumCount")]
     pub album_count: Option<i32>,
 }
 
 // 歌曲详情
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Song {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@title")]
     pub title: String,
-    #[serde(rename = "@artist")]
     pub artist: String,
-    #[serde(rename = "@album")]
     pub album: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@genre")]
     pub genre: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@year")]
     pub year: Option<i32>,
-    #[serde(rename = "@duration")]
     pub duration: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@bitRate")]
     pub bit_rate: Option<i32>,
-    #[serde(rename = "@contentType")]
     pub content_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@path")]
     pub path: Option<String>,
 }
 ```

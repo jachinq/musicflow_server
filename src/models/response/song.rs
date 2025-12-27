@@ -79,7 +79,30 @@ impl SongResponse {
 
 /// 随机歌曲响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RandomSongsResponse {
+    pub random_songs: RandomSongs,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RandomSongs {
+    pub song: Vec<SongResponse>,
+}
+
+/// 歌曲列表响应
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Songs {
     #[serde(rename = "song")]
     pub songs: Vec<SongResponse>,
+}
+
+/// 热门歌曲响应
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TopSongsResponse {
+    pub top_songs: TopSongs,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopSongs {
+    pub song: Vec<SongResponse>,
 }

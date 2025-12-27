@@ -111,6 +111,8 @@ fn build_app(
     let user_routes = handlers::user::routes()
         .with_state(pool.clone());
     let library_routes = handlers::library::routes(pool.clone(), scan_service);
+    let advanced_routes = handlers::advanced::routes()
+        .with_state(pool.clone());
 
     // 合并所有路由
     let app = Router::new()
@@ -125,6 +127,7 @@ fn build_app(
         .merge(playlist_routes)
         .merge(user_routes)
         .merge(library_routes)
+        .merge(advanced_routes)
         // 认证中间件（仅保护需要认证的端点）
         .layer(axum_middleware::from_fn(middleware::auth_middleware))
         // CORS 配置

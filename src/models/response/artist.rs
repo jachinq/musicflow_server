@@ -2,9 +2,24 @@
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
-use crate::models::dto::{ArtistDto, ArtistDetailDto};
+use crate::models::dto::{ArtistDetailDto, ArtistDto};
+use crate::models::entities::Artist;
 
 /// 艺术家响应 (Subsonic 格式)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArtistsResponse {
+    pub artists: Artists,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Artists {
+    pub index: Vec<ArtistIndex>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArtistIndex {
+    pub name: String,
+    pub artist: Vec<ArtistResponse>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArtistResponse {
     pub id: String,
@@ -13,6 +28,19 @@ pub struct ArtistResponse {
     pub cover_art: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub album_count: Option<i32>,
+}
+
+
+// Entity -> Response 转换
+impl From<Artist> for ArtistResponse {
+    fn from(dto: Artist) -> Self {
+        Self {
+            id: dto.id,
+            name: dto.name,
+            cover_art: dto.cover_art_path,
+            album_count: None,
+        }
+    }
 }
 
 // DTO -> Response 转换
@@ -39,6 +67,9 @@ impl From<ArtistDetailDto> for ArtistResponse {
 }
 
 impl ArtistResponse {
+    pub fn from_entities(entities: Vec<Artist>) -> Vec<Self> {
+        entities.into_iter().map(|entity| Self::from(entity)).collect()
+    }
     pub fn from_dtos(dtos: Vec<ArtistDto>) -> Vec<Self> {
         dtos.into_iter().map(|dto| Self::from(dto)).collect()
     }
@@ -49,6 +80,10 @@ impl ArtistResponse {
 }
 
 /// 艺术家详情 (包含专辑列表)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArtistDetailResponse {
+    pub artist: ArtistDetail,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArtistDetail {
     pub id: String,
