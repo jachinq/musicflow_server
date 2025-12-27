@@ -2,8 +2,13 @@
 #![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
+use std::fs::File;
 use walkdir::WalkDir;
 use sqlx::SqlitePool;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta::{MetadataOptions, StandardTagKey};
+use symphonia::core::probe::Hint;
+use symphonia::core::formats::FormatOptions;
 use crate::models::entities::{Album, Artist, Song};
 use crate::error::AppError;
 
@@ -20,6 +25,23 @@ pub struct ScanResult {
     pub albums: usize,
     pub songs: usize,
     pub failed: usize,
+}
+
+/// 音频元数据
+#[derive(Debug, Default)]
+struct AudioMetadata {
+    title: Option<String>,
+    artist: Option<String>,
+    album: Option<String>,
+    album_artist: Option<String>,
+    genre: Option<String>,
+    year: Option<i32>,
+    track_number: Option<i32>,
+    disc_number: Option<i32>,
+    duration_secs: u64,
+    bit_rate: Option<i32>,
+    sample_rate: Option<i32>,
+    channels: Option<u8>,
 }
 
 impl ScanService {
@@ -76,42 +98,40 @@ impl ScanService {
 
     /// 处理单个音频文件
     async fn process_audio_file(&self, path: &Path) -> Result<(), AppError> {
-        // 简化处理：从文件名提取基本信息
-        // 实际应用中可以使用 symphonia 或其他音频库来读取完整的元数据
+        // 使用 Symphonia 读取音频元数据
+        let metadata = self.extract_audio_metadata(path)?;
 
-        // 从文件名提取标题
-        let title = path.file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Unknown")
-            .to_string();
+        // 使用元数据中的信息,如果不存在则使用文件路径推断
+        let artist_name = metadata.artist
+            .or_else(|| metadata.album_artist.clone())
+            .unwrap_or_else(|| self.extract_artist_from_path(path));
 
-        // 从父目录提取艺术家和专辑信息
-        let artist_name = path.parent()
-            .and_then(|p| p.file_name())
-            .and_then(|s| s.to_str())
-            .unwrap_or("Unknown Artist")
-            .to_string();
+        let album_name = metadata.album
+            .unwrap_or_else(|| self.extract_album_from_path(path));
 
-        let album_name = path.parent()
-            .and_then(|p| p.parent())
-            .and_then(|p| p.file_name())
-            .and_then(|s| s.to_str())
-            .unwrap_or("Unknown Album")
-            .to_string();
+        let title = metadata.title
+            .unwrap_or_else(|| path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Unknown")
+                .to_string());
 
-        // 获取文件大小
+        // 获取文件大小和 MIME 类型
         let file_size = std::fs::metadata(path)
             .map(|m| m.len())
             .ok();
 
-        // 简化的元数据
-        let duration = 0; // 需要音频库来读取
-        let bit_rate: Option<i32> = None;
-        let year: Option<i32> = None;
-        let genre: Option<String> = None;
-        let track_number: Option<i32> = None;
-        let disc_number: Option<i32> = None;
-        let content_type = "audio/mpeg".to_string(); // 简化处理
+        let content_type = self.get_content_type(path);
+
+        // 估算比特率:如果有文件大小和时长
+        let bit_rate = if let Some(size) = file_size {
+            if metadata.duration_secs > 0 {
+                Some(((size * 8) / metadata.duration_secs) as i32)
+            } else {
+                metadata.bit_rate
+            }
+        } else {
+            metadata.bit_rate
+        };
 
         // 保存到数据库
         self.save_to_database(
@@ -119,17 +139,162 @@ impl ScanService {
             &album_name,
             &title,
             path,
-            duration,
+            metadata.duration_secs as i32,
             bit_rate,
-            year,
-            genre.as_deref(),
-            track_number,
-            disc_number,
+            metadata.year,
+            metadata.genre.as_deref(),
+            metadata.track_number,
+            metadata.disc_number,
             &content_type,
             file_size,
         ).await?;
 
         Ok(())
+    }
+
+    /// 使用 Symphonia 提取音频元数据
+    fn extract_audio_metadata(&self, path: &Path) -> Result<AudioMetadata, AppError> {
+        // 打开文件
+        let file = File::open(path)
+            .map_err(|e| AppError::ValidationError(format!("无法打开文件: {}", e)))?;
+
+        // 创建媒体源
+        let mss = MediaSourceStream::new(Box::new(file), Default::default());
+
+        // 创建格式提示
+        let mut hint = Hint::new();
+        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+            hint.with_extension(ext);
+        }
+
+        // 探测格式
+        let probed = symphonia::default::get_probe()
+            .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+            .map_err(|e| AppError::ValidationError(format!("无法探测音频格式: {}", e)))?;
+
+        let mut format = probed.format;
+        let track = format.default_track()
+            .ok_or_else(|| AppError::ValidationError("没有找到音频轨道".to_string()))?;
+
+        let mut metadata = AudioMetadata::default();
+
+        // 获取时长信息
+        if let Some(time_base) = track.codec_params.time_base {
+            if let Some(n_frames) = track.codec_params.n_frames {
+                let duration = time_base.calc_time(n_frames);
+                metadata.duration_secs = duration.seconds;
+            }
+        }
+
+        // 获取采样率
+        if let Some(sample_rate) = track.codec_params.sample_rate {
+            metadata.sample_rate = Some(sample_rate as i32);
+        }
+
+        // 获取声道数
+        if let Some(channels) = track.codec_params.channels {
+            metadata.channels = Some(channels.count() as u8);
+        }
+
+        // 比特率计算:如果有文件大小和时长,可以估算
+        // Symphonia 的 CodecParameters 不直接提供比特率字段
+        // 可以通过 (文件大小 * 8) / 时长 来估算
+
+        // 读取标签元数据
+        if let Some(metadata_rev) = format.metadata().current() {
+            for tag in metadata_rev.tags() {
+                match tag.std_key {
+                    Some(StandardTagKey::TrackTitle) => {
+                        metadata.title = Some(tag.value.to_string());
+                    }
+                    Some(StandardTagKey::Artist) => {
+                        metadata.artist = Some(tag.value.to_string());
+                    }
+                    Some(StandardTagKey::Album) => {
+                        metadata.album = Some(tag.value.to_string());
+                    }
+                    Some(StandardTagKey::AlbumArtist) => {
+                        metadata.album_artist = Some(tag.value.to_string());
+                    }
+                    Some(StandardTagKey::Genre) => {
+                        metadata.genre = Some(tag.value.to_string());
+                    }
+                    Some(StandardTagKey::Date) |
+                    Some(StandardTagKey::ReleaseDate) => {
+                        // 尝试解析年份
+                        if let Ok(year) = tag.value.to_string().parse::<i32>() {
+                            metadata.year = Some(year);
+                        } else {
+                            // 尝试从日期字符串提取年份 (如 "2024-01-01")
+                            if let Some(year_str) = tag.value.to_string().split('-').next() {
+                                if let Ok(year) = year_str.parse::<i32>() {
+                                    metadata.year = Some(year);
+                                }
+                            }
+                        }
+                    }
+                    Some(StandardTagKey::TrackNumber) => {
+                        // 处理 "1/12" 格式
+                        let track_str = tag.value.to_string();
+                        if let Some(track_num) = track_str.split('/').next() {
+                            if let Ok(num) = track_num.parse::<i32>() {
+                                metadata.track_number = Some(num);
+                            }
+                        }
+                    }
+                    Some(StandardTagKey::DiscNumber) => {
+                        // 处理 "1/2" 格式
+                        let disc_str = tag.value.to_string();
+                        if let Some(disc_num) = disc_str.split('/').next() {
+                            if let Ok(num) = disc_num.parse::<i32>() {
+                                metadata.disc_number = Some(num);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        Ok(metadata)
+    }
+
+    /// 从路径推断艺术家名称
+    fn extract_artist_from_path(&self, path: &Path) -> String {
+        path.parent()
+            .and_then(|p| p.file_name())
+            .and_then(|s| s.to_str())
+            .unwrap_or("Unknown Artist")
+            .to_string()
+    }
+
+    /// 从路径推断专辑名称
+    fn extract_album_from_path(&self, path: &Path) -> String {
+        path.parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.file_name())
+            .and_then(|s| s.to_str())
+            .unwrap_or("Unknown Album")
+            .to_string()
+    }
+
+    /// 根据文件扩展名获取 MIME 类型
+    fn get_content_type(&self, path: &Path) -> String {
+        let ext = path.extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        match ext.as_str() {
+            "mp3" => "audio/mpeg",
+            "flac" => "audio/flac",
+            "wav" => "audio/wav",
+            "m4a" | "mp4" => "audio/mp4",
+            "aac" => "audio/aac",
+            "ogg" => "audio/ogg",
+            "opus" => "audio/opus",
+            _ => "audio/mpeg",
+        }.to_string()
     }
 
     /// 保存到数据库
