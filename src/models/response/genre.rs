@@ -7,8 +7,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Genre {
-    #[serde(rename = "$value")]
-    pub name: String,
+    pub value: String,
     pub song_count: i32,
     pub album_count: i32,
 }

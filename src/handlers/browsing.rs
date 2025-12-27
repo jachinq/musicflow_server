@@ -867,8 +867,8 @@ pub async fn get_genres(
 
     let genre_list: Vec<Genre> = genres
         .into_iter()
-        .map(|(name, song_count, album_count)| Genre {
-            name,
+        .map(|(value, song_count, album_count)| Genre {
+            value,
             song_count,
             album_count,
         })
