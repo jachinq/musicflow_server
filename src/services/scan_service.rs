@@ -1,4 +1,5 @@
 //! 音乐库扫描服务
+#![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;

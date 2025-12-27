@@ -1,4 +1,5 @@
 //! 认证相关处理器
+#![allow(dead_code)]
 
 use axum::{
     Router,

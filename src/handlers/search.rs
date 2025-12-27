@@ -1,4 +1,5 @@
 //! 搜索端点处理器
+#![allow(dead_code)]
 
 use axum::{
     Router,

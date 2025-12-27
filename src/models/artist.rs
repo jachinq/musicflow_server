@@ -1,4 +1,5 @@
 //! 艺术家模型
+#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;

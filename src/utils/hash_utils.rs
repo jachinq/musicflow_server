@@ -1,4 +1,5 @@
 //! 哈希工具函数
+#![allow(dead_code)]
 
 use bcrypt::{hash, verify, DEFAULT_COST};
 use md5;

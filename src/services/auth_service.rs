@@ -1,4 +1,5 @@
 //! 认证服务
+#![allow(dead_code)]
 
 use crate::models::user::{User, CreateUserRequest, LoginRequest};
 use crate::utils::{hash_password, verify_password, generate_jwt_token, generate_subsonic_token, generate_salt};

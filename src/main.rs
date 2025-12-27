@@ -29,7 +29,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. 初始化日志
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(&config.rust_log))
-        .with(tracing_subscriber::fmt::layer())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_file(true)        // 显示文件名
+                .with_line_number(true) // 显示行号
+                .with_target(true)      // 显示模块路径(target)
+        )
         .init();
 
     tracing::info!("Starting {} v{}", config.app_name, config.app_version);
@@ -187,7 +192,6 @@ async fn create_default_admin(pool: &DbPool) -> Result<(), anyhow::Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[tokio::test]
     async fn test_app_creation() {

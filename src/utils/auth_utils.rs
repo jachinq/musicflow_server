@@ -1,4 +1,5 @@
 //! 认证工具函数
+#![allow(dead_code)]
 
 use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
 use serde::{Deserialize, Serialize};

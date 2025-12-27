@@ -1,4 +1,5 @@
 //! 认证中间件
+#![allow(dead_code)]
 
 use axum::{
     async_trait,

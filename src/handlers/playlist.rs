@@ -20,12 +20,6 @@ use crate::models::song::SongResponse;
 pub struct PlaylistParams {
     pub id: Option<String>,
     pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// GET /rest/getPlaylists - 获取所有播放列表

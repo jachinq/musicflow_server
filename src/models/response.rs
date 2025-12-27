@@ -1,4 +1,5 @@
 //! Subsonic API 响应模型
+#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 

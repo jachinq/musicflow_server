@@ -1,4 +1,5 @@
 //! 流媒体端点处理器
+#![allow(dead_code)]
 
 use axum::{
     Router,
@@ -23,10 +24,13 @@ use crate::models::response::{SubsonicResponse, ResponseContainer};
 #[derive(Debug, Deserialize)]
 pub struct StreamParams {
     pub id: String,
-    pub maxBitRate: Option<i32>,
+    #[serde(rename = "maxBitRate")]
+    pub max_bit_rate: Option<i32>,
     pub format: Option<String>,
-    pub timeOffset: Option<i32>,
-    pub estimateContentLength: Option<bool>,
+    #[serde(rename = "sampleRate")]
+    pub time_offset: Option<i32>,
+    #[serde(rename = "startTime")]
+    pub estimate_content_length: Option<bool>,
     pub u: String,
     pub t: Option<String>,
     pub s: Option<String>,
@@ -101,7 +105,7 @@ pub async fn stream(
     headers.insert("Accept-Ranges", "bytes".parse().unwrap());
 
     // 如果估计内容长度，可以设置 Content-Length
-    if params.estimateContentLength.unwrap_or(false) {
+    if params.estimate_content_length.unwrap_or(false) {
         if let Ok(metadata) = tokio::fs::metadata(&file_path).await {
             headers.insert("Content-Length", metadata.len().to_string().parse().unwrap());
         }
