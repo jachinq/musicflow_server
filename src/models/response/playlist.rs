@@ -7,35 +7,23 @@ use super::SongResponse;
 /// 播放列表响应 (Subsonic 格式 - 简略)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaylistResponse {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@name")]
     pub name: String,
-    #[serde(rename = "@owner")]
     pub owner: String,
-    #[serde(rename = "@public")]
     pub public: bool,
-    #[serde(rename = "@songCount")]
     pub song_count: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@duration")]
     pub duration: Option<i32>,
 }
 
 /// 播放列表详情 (包含歌曲列表)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaylistDetail {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@name")]
     pub name: String,
-    #[serde(rename = "@owner")]
     pub owner: String,
-    #[serde(rename = "@public")]
     pub public: bool,
-    #[serde(rename = "@songCount")]
     pub song_count: i32,
-    #[serde(rename = "@duration")]
     pub duration: i32,
     pub entry: Vec<SongResponse>,
 }

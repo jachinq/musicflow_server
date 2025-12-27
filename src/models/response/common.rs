@@ -54,12 +54,9 @@ pub struct ScanStatus {
 /// 目录
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Directory {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@name")]
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@parent")]
     pub parent: Option<String>,
     pub child: Vec<Child>,
 }
@@ -67,26 +64,18 @@ pub struct Directory {
 /// 目录子项
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Child {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@title")]
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@artist")]
     pub artist: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@album")]
     pub album: Option<String>,
-    #[serde(rename = "@isDir")]
     pub is_dir: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@coverArt")]
     pub cover_art: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@duration")]
     pub duration: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@playCount")]
     pub play_count: Option<i32>,
 }
 
@@ -109,11 +98,8 @@ pub struct SimilarArtists {
 /// 歌词
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lyrics {
-    #[serde(rename = "@artist")]
     pub artist: Option<String>,
-    #[serde(rename = "@title")]
     pub title: Option<String>,
-    #[serde(rename = "$text")]
     pub text: Option<String>,
 }
 
@@ -127,13 +113,9 @@ pub struct ChatMessages {
 /// 聊天消息详情
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@username")]
     pub username: String,
-    #[serde(rename = "@message")]
     pub message: String,
-    #[serde(rename = "@time")]
     pub time: i64,
 }
 
@@ -147,15 +129,10 @@ pub struct NowPlaying {
 /// 正在播放条目
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NowPlayingEntry {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@title")]
     pub title: String,
-    #[serde(rename = "@artist")]
     pub artist: String,
-    #[serde(rename = "@username")]
     pub username: String,
-    #[serde(rename = "@minutesAgo")]
     pub minutes_ago: i32,
 }
 
@@ -169,20 +146,15 @@ pub struct Videos {
 /// 视频详情
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Video {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@title")]
     pub title: String,
-    #[serde(rename = "@contentType")]
     pub content_type: String,
 }
 
 /// 视频信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoInfo {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@title")]
     pub title: String,
     pub captions: Option<Captions>,
 }
@@ -190,9 +162,7 @@ pub struct VideoInfo {
 /// 字幕
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Captions {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@label")]
     pub label: String,
 }
 

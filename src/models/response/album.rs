@@ -7,35 +7,24 @@ use crate::models::dto::{AlbumDto, AlbumDetailDto};
 /// 专辑响应 (Subsonic 格式 - 简略)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlbumResponse {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@name")]
     pub name: String,
-    #[serde(rename = "@artist")]
     pub artist: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@artistId")]
     pub artist_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@coverArt")]
     pub cover_art: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@songCount")]
     pub song_count: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@created")]
     pub created: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@duration")]
     pub duration: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@playCount")]
     pub play_count: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@year")]
     pub year: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@genre")]
     pub genre: Option<String>,
 }
 

@@ -7,38 +7,25 @@ use crate::models::dto::{SongDto, SongDetailDto};
 /// 歌曲响应 (Subsonic 格式)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SongResponse {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@title")]
     pub title: String,
-    #[serde(rename = "@artist")]
     pub artist: String,
-    #[serde(rename = "@album")]
     pub album: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@genre")]
     pub genre: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@year")]
     pub year: Option<i32>,
-    #[serde(rename = "@duration")]
     pub duration: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@bitRate")]
     pub bit_rate: Option<i32>,
-    #[serde(rename = "@contentType")]
     pub content_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@path")]
     pub path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@trackNumber")]
     pub track_number: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@discNumber")]
     pub disc_number: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@coverArt")]
     pub cover_art: Option<String>,
 }
 

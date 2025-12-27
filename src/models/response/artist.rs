@@ -7,15 +7,11 @@ use crate::models::dto::{ArtistDto, ArtistDetailDto};
 /// 艺术家响应 (Subsonic 格式)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArtistResponse {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@name")]
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@coverArt")]
     pub cover_art: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@albumCount")]
     pub album_count: Option<i32>,
 }
 
@@ -55,14 +51,10 @@ impl ArtistResponse {
 /// 艺术家详情 (包含专辑列表)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArtistDetail {
-    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "@name")]
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "@coverArt")]
     pub cover_art: Option<String>,
-    #[serde(rename = "@albumCount")]
     pub album_count: i32,
     pub album: Vec<super::AlbumResponse>,
 }
@@ -70,7 +62,6 @@ pub struct ArtistDetail {
 /// 艺术家索引
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Indexes {
-    #[serde(rename = "@lastModified")]
     pub last_modified: i64,
     #[serde(rename = "index")]
     pub indexes: Vec<Index>,
@@ -79,7 +70,6 @@ pub struct Indexes {
 /// 按字母分组的索引
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Index {
-    #[serde(rename = "@name")]
     pub name: String,
     pub artist: Vec<ArtistResponse>,
 }
