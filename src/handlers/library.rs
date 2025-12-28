@@ -399,7 +399,7 @@ pub fn routes(
 
     Router::new()
         .route("/rest/getScanStatus", get(get_scan_status))
-        .route("/rest/startScan", get(start_scan))
+        .route("/rest/startScan", post(start_scan))
         .route("/rest/scrobble", post(scrobble))
         .route("/rest/star", post(star))
         .route("/rest/unstar", post(unstar))

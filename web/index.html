@@ -217,7 +217,7 @@
                     let errorMsg = '请求失败';
                     try {
                         const error = await response.json();
-                        errorMsg = error.message || error.error || errorMsg;
+                        errorMsg = error.message || error.error?.message || errorMsg;
                     } catch (e) {
                         errorMsg = `HTTP ${response.status}: ${response.statusText}`;
                     }
@@ -667,6 +667,7 @@
                     console.error('获取扫描状态失败:', error);
                 }
             } catch (error) {
+                console.log('登录失败:', error);
                 showNotification('登录失败: ' + error.message, 'error');
             } finally {
                 btn.disabled = false;

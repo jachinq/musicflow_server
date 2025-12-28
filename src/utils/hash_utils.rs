@@ -1,18 +1,7 @@
 //! 哈希工具函数
 #![allow(dead_code)]
 
-use bcrypt::{hash, verify, DEFAULT_COST};
 use md5;
-
-/// 使用 bcrypt 哈希密码
-pub fn hash_password(password: &str) -> Result<String, anyhow::Error> {
-    hash(password, DEFAULT_COST).map_err(Into::into)
-}
-
-/// 验证 bcrypt 哈希密码
-pub fn verify_password(password: &str, hash: &str) -> Result<bool, anyhow::Error> {
-    verify(password, hash).map_err(Into::into)
-}
 
 /// 生成 Subsonic MD5 令牌 (MD5(password + salt))
 pub fn generate_subsonic_token(password: &str, salt: &str) -> String {
@@ -33,14 +22,6 @@ pub fn generate_salt() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_password_hashing() {
-        let password = "test123";
-        let hash = hash_password(password).unwrap();
-        assert!(verify_password(password, &hash).unwrap());
-        assert!(!verify_password("wrong", &hash).unwrap());
-    }
 
     #[test]
     fn test_subsonic_token() {

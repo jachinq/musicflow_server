@@ -170,8 +170,6 @@ fn build_app(
 
 /// 创建默认管理员用户
 async fn create_default_admin(pool: &DbPool) -> Result<(), anyhow::Error> {
-    use crate::utils::hash_password;
-
     // 检查 users 表是否存在
     let table_exists: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='users')",
@@ -192,15 +190,13 @@ async fn create_default_admin(pool: &DbPool) -> Result<(), anyhow::Error> {
     if count == 0 {
         tracing::info!("No admin user found, creating default admin...");
 
-        let password_hash = hash_password("admin")?;
         let id = uuid::Uuid::new_v4().to_string();
 
         query!(
-            "INSERT INTO users (id, username, api_password, password_hash, email, is_admin) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (id, username, password, email, is_admin) VALUES (?, ?, ?, ?, ?)",
             id,
             "admin",
             "admin",
-            password_hash,
             "admin@example.com",
             true
         )
@@ -208,9 +204,9 @@ async fn create_default_admin(pool: &DbPool) -> Result<(), anyhow::Error> {
         .await?;
 
         tracing::info!(
-            "Default admin created: username='admin', password='admin', api_password='admin'"
+            "Default admin created: username='admin', password='admin'"
         );
-        tracing::warn!("Please change the default passwords immediately!");
+        tracing::warn!("Please change the default password immediately!");
     }
 
     Ok(())

@@ -11,8 +11,7 @@ use chrono::{DateTime, Utc};
 pub struct User {
     pub id: String,
     pub username: String,
-    pub password_hash: String,
-    pub api_password: Option<String>,  // Subsonic API 密码(明文,用于 MD5 token 验证)
+    pub password: String,  // 明文密码,用于 MD5 token 验证
     pub email: String,
     pub is_admin: bool,
     pub max_bitrate: i32,
@@ -33,15 +32,14 @@ impl User {
     /// 创建新用户（用于数据库插入）
     pub fn new(
         username: String,
-        password_hash: String,
+        password: String,
         email: String,
         is_admin: bool,
     ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
-            username: username.clone(),
-            password_hash,
-            api_password: Some(username),  // 默认使用用户名作为 API 密码
+            username,
+            password,
             email,
             is_admin,
             max_bitrate: 320,

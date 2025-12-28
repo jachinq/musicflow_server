@@ -316,7 +316,7 @@ mod tests {
             "CREATE TABLE users (
                 id TEXT PRIMARY KEY,
                 username TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
+                password TEXT NOT NULL,
                 email TEXT,
                 is_admin BOOLEAN DEFAULT 0,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -329,12 +329,12 @@ mod tests {
 
         // 插入测试管理员
         sqlx::query(
-            "INSERT INTO users (id, username, password_hash, email, is_admin)
+            "INSERT INTO users (id, username, password, email, is_admin)
              VALUES (?, ?, ?, ?, ?)",
         )
         .bind("admin-id")
         .bind("admin")
-        .bind("hash")
+        .bind("admin")
         .bind("admin@test.com")
         .bind(true)
         .execute(&pool)
@@ -343,12 +343,12 @@ mod tests {
 
         // 插入测试普通用户
         sqlx::query(
-            "INSERT INTO users (id, username, password_hash, email, is_admin)
+            "INSERT INTO users (id, username, password, email, is_admin)
              VALUES (?, ?, ?, ?, ?)",
         )
         .bind("user-id")
         .bind("user")
-        .bind("hash")
+        .bind("password")
         .bind("user@test.com")
         .bind(false)
         .execute(&pool)

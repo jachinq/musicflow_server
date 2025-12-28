@@ -3,7 +3,7 @@
 
 use crate::models::dto::{CreateUserRequest, LoginRequest};
 use crate::models::entities::User;
-use crate::utils::{hash_password, verify_password, generate_subsonic_token, generate_salt};
+use crate::utils::{generate_subsonic_token, generate_salt};
 use crate::error::AppError;
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -50,20 +50,16 @@ impl AuthService {
             return Err(AppError::validation_error("Username or email already exists"));
         }
 
-        // 哈希密码
-        let password_hash = hash_password(&req.password)
-            .map_err(|e| AppError::ValidationError(format!("Failed to hash password: {}", e)))?;
-
         // 生成用户ID
         let user_id = Uuid::new_v4().to_string();
 
-        // 创建用户
+        // 创建用户(直接存储明文密码)
         sqlx::query(
-            "INSERT INTO users (id, username, password_hash, email, is_admin) VALUES (?, ?, ?, ?, ?)"
+            "INSERT INTO users (id, username, password, email, is_admin) VALUES (?, ?, ?, ?, ?)"
         )
         .bind(&user_id)
         .bind(&req.username)
-        .bind(&password_hash)
+        .bind(&req.password)
         .bind(&req.email)
         .bind(req.is_admin.unwrap_or(false))
         .execute(&self.pool)
@@ -98,11 +94,8 @@ impl AuthService {
 
         let user = user.ok_or_else(|| AppError::auth_failed("Invalid username or password"))?;
 
-        // 验证密码
-        let is_valid = verify_password(&req.password, &user.password_hash)
-            .map_err(|e| AppError::ValidationError(format!("Failed to verify password: {}", e)))?;
-
-        if !is_valid {
+        // 验证密码(直接比较明文)
+        if req.password != user.password {
             return Err(AppError::auth_failed("Invalid username or password"));
         }
 
@@ -173,11 +166,8 @@ impl AuthService {
 
         let user = user.ok_or_else(|| AppError::auth_failed("Invalid username"))?;
 
-        // 验证密码
-        let is_valid = verify_password(password, &user.password_hash)
-            .map_err(|e| AppError::ValidationError(format!("Failed to verify password: {}", e)))?;
-
-        if !is_valid {
+        // 验证密码(直接比较明文)
+        if password != user.password {
             return Err(AppError::auth_failed("Invalid password"));
         }
 
@@ -280,11 +270,8 @@ impl AuthService {
         user_id: &str,
         new_password: &str,
     ) -> Result<(), AppError> {
-        let new_hash = hash_password(new_password)
-            .map_err(|e| AppError::ValidationError(format!("Failed to hash password: {}", e)))?;
-
-        sqlx::query("UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-            .bind(&new_hash)
+        sqlx::query("UPDATE users SET password = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(new_password)
             .bind(user_id)
             .execute(&self.pool)
             .await?;

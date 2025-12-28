@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use crate::models::entities::User;
-use crate::utils::verify_password;
 
 /// 标准错误响应结构
 #[derive(Debug, Serialize)]
@@ -94,11 +93,8 @@ async fn authenticate_with_password(
     .map_err(|_| ())?
     .ok_or(())?;
 
-    // 验证密码
-    let is_valid = verify_password(password, &user.password_hash)
-        .map_err(|_| ())?;
-
-    if !is_valid {
+    // 验证密码(直接比较明文)
+    if password != user.password {
         return Err(());
     }
 
@@ -121,11 +117,11 @@ async fn authenticate_subsonic(
     .map_err(|_| ())?
     .ok_or(())?;
 
-    // 获取用户的 API 密码
-    let api_password = user.api_password.as_ref().ok_or(())?;
+    // 获取用户的密码
+    let password = &user.password;
 
-    // 计算预期的 token: MD5(api_password + salt)
-    let expected_token = crate::utils::generate_subsonic_token(api_password, salt);
+    // 计算预期的 token: MD5(password + salt)
+    let expected_token = crate::utils::generate_subsonic_token(password, salt);
 
     // 验证 token(不区分大小写)
     if !expected_token.eq_ignore_ascii_case(token) {
