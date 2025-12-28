@@ -140,6 +140,8 @@ pub async fn start_scan(
     axum::extract::State(state): axum::extract::State<LibraryState>,
     _params: Query<ScanParams>,
 ) -> Result<Json<SubsonicResponse<()>>, AppError> {
+    // 记录耗时
+    let start_time = std::time::Instant::now();
     tracing::info!("开始扫描");
 
     let mut scanning = state.scan_state.scanning.lock().await;
@@ -166,6 +168,7 @@ pub async fn start_scan(
         // 更新状态
         let mut scanning = scan_state.scanning.lock().await;
         *scanning = false;
+        tracing::info!("扫描结束,耗时: {}s", start_time.elapsed().as_secs());
     });
 
     Ok(Json(SubsonicResponse {
