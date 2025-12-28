@@ -29,7 +29,7 @@ pub struct WebPConfig {
 
 impl Default for WebPConfig {
     fn default() -> Self {
-        Self { quality: 75.0 }
+        Self { quality: 50.0 }
     }
 }
 
@@ -44,7 +44,7 @@ pub fn resize_and_convert_to_webp(
     input_path: &Path,
     output_path: &Path,
     target_size: u32,
-    _config: &WebPConfig,
+    config: &WebPConfig,
 ) -> Result<(), std::io::Error> {
     // 读取原图
     let img = image::open(input_path).map_err(|e| {
@@ -62,7 +62,7 @@ pub fn resize_and_convert_to_webp(
     let resized = img.resize_exact(new_width, new_height, FilterType::Lanczos3);
 
     // 转换为 WebP
-    let webp = compress_img(&resized, _config.quality);
+    let webp = compress_img(&resized, config.quality);
     if webp.is_err() {
         // 压缩失败，保存为不压缩的 WebP
         resized

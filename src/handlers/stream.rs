@@ -211,7 +211,10 @@ pub async fn get_cover_art(
     let original_path_clone = original_path.clone();
     let cache_path_clone = cache_path.clone();
     tokio::task::spawn_blocking(move || {
-        let config = crate::utils::image_utils::WebPConfig::default();
+        let mut config = crate::utils::image_utils::WebPConfig::default();
+        if size > 300 {
+            config.quality = 75.0; // 默认 50，超过默认尺寸的图片用 75 质量
+        }
         crate::utils::image_utils::resize_and_convert_to_webp(
             &original_path_clone,
             &cache_path_clone,

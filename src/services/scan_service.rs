@@ -4,6 +4,7 @@
 use crate::error::AppError;
 use crate::models::entities::{Album, Artist, Song};
 use crate::utils::{get_image_format, write_image_to_file};
+use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -445,69 +446,32 @@ impl ScanService {
         genre: Option<&str>,
         cover_art_raw: Option<(String, Box<[u8]>)>,
     ) -> Result<String, AppError> {
-        // 先尝试查找
-        let existing = sqlx::query_scalar::<_, String>(
-            "SELECT id FROM albums WHERE artist_id = ? AND name = ?",
+        // 查找已存在的专辑，获取完整信息用于对比
+        let existing = sqlx::query_as::<_, (String, Option<i32>, Option<String>, Option<String>, Option<String>)>(
+            "SELECT id, year, genre, cover_art_path, cover_art_hash FROM albums WHERE artist_id = ? AND name = ?",
         )
         .bind(artist_id)
         .bind(name)
         .fetch_optional(&self.pool)
         .await?;
 
-        if let Some(id) = existing {
-            return Ok(id);
+        if let Some((album_id, existing_year, existing_genre, existing_cover_path, existing_cover_hash)) = existing {
+            // 专辑已存在，进行智能更新
+            self.update_album_if_needed(
+                &album_id,
+                year,
+                genre,
+                existing_year,
+                existing_genre.as_deref(),
+                existing_cover_path,
+                existing_cover_hash,
+                cover_art_raw,
+            ).await?;
+            return Ok(album_id);
         }
 
-        // 创建新专辑
-        let mut album = Album::new(
-            artist_id.to_string(),
-            name.to_string(),
-            path_to_string(&self.library_path), // 简化处理
-            year,
-            genre.map(|s| s.to_string()),
-            None,
-        );
-
-        // 写入专辑封面
-        if let Some((mime_type, data)) = cover_art_raw {
-            let format = get_image_format(&mime_type);
-            let cover_art = format!("al-{}", Uuid::new_v4().to_string()[0..8].to_string());
-
-            // 创建 originals 目录
-            let original_dir = PathBuf::from("./coverArt/originals");
-            if !original_dir.exists() {
-                std::fs::create_dir_all(&original_dir)?;
-            }
-
-            let original_file_path = format!("./coverArt/originals/{}.{}", cover_art, format);
-            write_image_to_file(&data, &original_file_path)?;
-
-            // 预生成 300px WebP 缓存
-            if let Err(e) = self.prewarm_cover_cache(&cover_art, &original_file_path).await {
-                tracing::warn!("Failed to prewarm cover cache for {}: {}", cover_art, e);
-            }
-
-            album.cover_art_path = Some(cover_art);
-        }
-
-        sqlx::query(
-            "INSERT INTO albums (id, artist_id, name, year, genre, cover_art_path, path,
-             song_count, duration, play_count, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)",
-        )
-        .bind(&album.id)
-        .bind(&album.artist_id)
-        .bind(&album.name)
-        .bind(&album.year)
-        .bind(&album.genre)
-        .bind(&album.cover_art_path)
-        .bind(&album.path)
-        .bind(album.created_at)
-        .bind(album.updated_at)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(album.id)
+        // 专辑不存在，创建新专辑
+        self.create_new_album(artist_id, name, year, genre, cover_art_raw).await
     }
 
     /// 获取或创建歌曲
@@ -582,6 +546,9 @@ impl ScanService {
             .bind(path_to_string(path))
             .execute(&self.pool)
             .await?;
+
+            // 更新歌曲后也需要更新专辑统计信息（可能时长变化了）
+            self.update_album_stats(album_id).await?;
             return Ok(());
         }
 
@@ -610,19 +577,199 @@ impl ScanService {
         .execute(&self.pool)
         .await?;
 
-        // 更新专辑的歌曲计数
+        // 更新专辑的统计信息
+        self.update_album_stats(album_id).await?;
+
+        Ok(())
+    }
+
+    /// 更新专辑的统计信息（歌曲数量和总时长）
+    async fn update_album_stats(&self, album_id: &str) -> Result<(), AppError> {
         sqlx::query(
             "UPDATE albums
              SET song_count = (SELECT COUNT(*) FROM songs WHERE album_id = ?),
+                 duration = (SELECT COALESCE(SUM(duration), 0) FROM songs WHERE album_id = ?),
                  updated_at = CURRENT_TIMESTAMP
              WHERE id = ?",
         )
+        .bind(album_id)
         .bind(album_id)
         .bind(album_id)
         .execute(&self.pool)
         .await?;
 
         Ok(())
+    }
+
+    /// 创建新专辑
+    async fn create_new_album(
+        &self,
+        artist_id: &str,
+        name: &str,
+        year: Option<i32>,
+        genre: Option<&str>,
+        cover_art_raw: Option<(String, Box<[u8]>)>,
+    ) -> Result<String, AppError> {
+        let mut album = Album::new(
+            artist_id.to_string(),
+            name.to_string(),
+            path_to_string(&self.library_path),
+            year,
+            genre.map(|s| s.to_string()),
+            None,
+        );
+
+        let mut cover_art_hash: Option<String> = None;
+
+        // 处理封面图片
+        if let Some((mime_type, data)) = cover_art_raw {
+            // 计算 hash
+            cover_art_hash = Some(calculate_image_hash(&data));
+
+            // 处理图片
+            let cover_art_id = self.process_cover_art(&mime_type, &data).await?;
+            album.cover_art_path = Some(cover_art_id);
+        }
+
+        // 插入数据库（包含 hash）
+        sqlx::query(
+            "INSERT INTO albums (id, artist_id, name, year, genre, cover_art_path, cover_art_hash, path,
+             song_count, duration, play_count, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)",
+        )
+        .bind(&album.id)
+        .bind(&album.artist_id)
+        .bind(&album.name)
+        .bind(&album.year)
+        .bind(&album.genre)
+        .bind(&album.cover_art_path)
+        .bind(&cover_art_hash)
+        .bind(&album.path)
+        .bind(album.created_at)
+        .bind(album.updated_at)
+        .execute(&self.pool)
+        .await?;
+
+        tracing::info!(
+            "创建新专辑 [album_id={}, name={}, has_cover={}]",
+            album.id,
+            album.name,
+            album.cover_art_path.is_some()
+        );
+
+        Ok(album.id)
+    }
+
+    /// 智能更新专辑信息（只在有变化时更新）
+    #[allow(clippy::too_many_arguments)]
+    async fn update_album_if_needed(
+        &self,
+        album_id: &str,
+        new_year: Option<i32>,
+        new_genre: Option<&str>,
+        existing_year: Option<i32>,
+        existing_genre: Option<&str>,
+        existing_cover_path: Option<String>,
+        existing_cover_hash: Option<String>,
+        cover_art_raw: Option<(String, Box<[u8]>)>,
+    ) -> Result<(), AppError> {
+        // 1. 检查元数据是否变化
+        let year_changed = new_year != existing_year;
+        let genre_changed = new_genre != existing_genre;
+
+        // 2. 检查封面是否需要更新
+        let mut new_cover_path = existing_cover_path;
+        let mut new_cover_hash = existing_cover_hash.clone();
+        let mut cover_changed = false;
+
+        if let Some((mime_type, data)) = cover_art_raw {
+            // 计算新封面的 hash
+            let current_hash = calculate_image_hash(&data);
+
+            // 对比 hash：只在不同时才处理图片
+            if existing_cover_hash.as_ref() != Some(&current_hash) {
+                tracing::info!(
+                    "检测到专辑封面变化 [album_id={}]: hash {} -> {}",
+                    album_id,
+                    existing_cover_hash.as_deref().unwrap_or("None"),
+                    current_hash
+                );
+
+                // 处理新封面
+                let cover_art_id = self.process_cover_art(&mime_type, &data).await?;
+                new_cover_path = Some(cover_art_id);
+                new_cover_hash = Some(current_hash);
+                cover_changed = true;
+            } else {
+                tracing::debug!(
+                    "专辑封面未变化，跳过处理 [album_id={}, hash={}]",
+                    album_id,
+                    current_hash
+                );
+            }
+        }
+
+        // 3. 只在有任何变化时才执行 UPDATE
+        if year_changed || genre_changed || cover_changed {
+            let changes: Vec<&str> = [
+                year_changed.then_some("year"),
+                genre_changed.then_some("genre"),
+                cover_changed.then_some("cover"),
+            ]
+            .iter()
+            .filter_map(|&x| x)
+            .collect();
+
+            tracing::info!(
+                "更新专辑信息 [album_id={}]: 变更字段={:?}",
+                album_id,
+                changes
+            );
+
+            sqlx::query(
+                "UPDATE albums
+                 SET year = ?, genre = ?, cover_art_path = ?, cover_art_hash = ?, updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?",
+            )
+            .bind(new_year)
+            .bind(new_genre)
+            .bind(&new_cover_path)
+            .bind(&new_cover_hash)
+            .bind(album_id)
+            .execute(&self.pool)
+            .await?;
+        } else {
+            tracing::debug!("专辑信息无变化，跳过更新 [album_id={}]", album_id);
+        }
+        
+        Ok(())
+    }
+
+    /// 处理封面图片：保存原图 + 预热缓存
+    async fn process_cover_art(
+        &self,
+        mime_type: &str,
+        data: &[u8],
+    ) -> Result<String, AppError> {
+        let format = get_image_format(mime_type);
+        let cover_art_id = format!("al-{}", Uuid::new_v4().to_string()[0..8].to_string());
+
+        // 创建 originals 目录
+        let original_dir = PathBuf::from("./coverArt/originals");
+        if !original_dir.exists() {
+            std::fs::create_dir_all(&original_dir)?;
+        }
+
+        // 保存原始图片
+        let original_file_path = format!("./coverArt/originals/{}.{}", cover_art_id, format);
+        write_image_to_file(data, &original_file_path)?;
+
+        // 预生成 300px WebP 缓存
+        if let Err(e) = self.prewarm_cover_cache(&cover_art_id, &original_file_path).await {
+            tracing::warn!("预热封面缓存失败 [cover_id={}]: {}", cover_art_id, e);
+        }
+
+        Ok(cover_art_id)
     }
 
     /// 预热封面缓存
@@ -665,6 +812,13 @@ impl ScanService {
         tracing::info!("Prewarmed cover cache: {} (300px)", cover_art_id);
         Ok(())
     }
+}
+
+/// 计算图片数据的 SHA256 hash，性能开销不大，耗时在毫秒级
+fn calculate_image_hash(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    format!("{:x}", hasher.finalize())
 }
 
 fn path_to_string(path: &Path) -> String {

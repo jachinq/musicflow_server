@@ -10,6 +10,7 @@ CREATE TABLE albums (
     song_count INTEGER DEFAULT 0,
     duration INTEGER DEFAULT 0,
     play_count INTEGER DEFAULT 0,
+    cover_art_hash TEXT;
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
