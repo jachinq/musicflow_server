@@ -770,17 +770,10 @@ pub async fn get_top_songs(
     };
 
     // 查询该艺术家的热门歌曲（按播放次数排序）
-    let songs = sqlx::query_as::<_, SongDetailDto>(
-        "SELECT s.id, s.title, ar.name as artist, s.artist_id, al.name as album, s.album_id,
-                s.genre, s.year, s.duration, s.bit_rate, s.content_type,
-                s.track_number, s.disc_number, al.cover_art_path
-         FROM songs s
-         JOIN albums al ON s.album_id = al.id
-         JOIN artists ar ON s.artist_id = ar.id
-         WHERE s.artist_id = ?
-         ORDER BY s.play_count DESC, s.title ASC
-         LIMIT ?",
-    )
+    let songs = sqlx::query_as::<_, SongDetailDto>(&format!(
+        "{} WHERE s.artist_id = ? ORDER BY s.play_count DESC, s.title ASC LIMIT ?",
+        state.song_service.detail_sql()
+    ))
     .bind(&artist_id)
     .bind(count)
     .fetch_all(&*state.pool)
@@ -815,17 +808,10 @@ pub async fn get_songs_by_genre(
     let offset = params.offset.unwrap_or(0);
 
     // 查询指定流派的歌曲
-    let songs = sqlx::query_as::<_, SongDetailDto>(
-        "SELECT s.id, s.title, ar.name as artist, s.artist_id, al.name as album, s.album_id,
-                s.genre, s.year, s.duration, s.bit_rate, s.content_type,
-                s.track_number, s.disc_number, al.cover_art_path
-         FROM songs s
-         JOIN albums al ON s.album_id = al.id
-         JOIN artists ar ON s.artist_id = ar.id
-         WHERE s.genre = ?
-         ORDER BY s.title ASC
-         LIMIT ? OFFSET ?",
-    )
+    let songs = sqlx::query_as::<_, SongDetailDto>(&format!(
+        "{} WHERE s.genre = ? ORDER BY s.title ASC LIMIT ? OFFSET ?",
+        state.song_service.detail_sql()
+    ))
     .bind(&params.genre)
     .bind(count)
     .bind(offset)
