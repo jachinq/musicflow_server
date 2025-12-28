@@ -650,7 +650,7 @@ impl ScanService {
         .execute(&self.pool)
         .await?;
 
-        tracing::info!(
+        tracing::debug!(
             "创建新专辑 [album_id={}, name={}, has_cover={}]",
             album.id,
             album.name,

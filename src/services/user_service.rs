@@ -360,7 +360,7 @@ mod tests {
 
     fn create_service(pool: SqlitePool) -> UserService {
         let ctx = Arc::new(ServiceContext::new(pool.clone()));
-        let auth_service = Arc::new(AuthService::new(pool, "secret".to_string()));
+        let auth_service = Arc::new(AuthService::new(pool));
         UserService::new(ctx, auth_service)
     }
 

@@ -3,7 +3,7 @@
 
 use crate::models::dto::{CreateUserRequest, LoginRequest};
 use crate::models::entities::User;
-use crate::utils::{hash_password, verify_password, generate_jwt_token, generate_subsonic_token, generate_salt};
+use crate::utils::{hash_password, verify_password, generate_subsonic_token, generate_salt};
 use crate::error::AppError;
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -24,17 +24,15 @@ pub struct UserWithToken {
     pub podcast_role: bool,
     pub share_role: bool,
     pub video_conversion_role: bool,
-    pub token: String,
 }
 
 pub struct AuthService {
     pool: SqlitePool,
-    jwt_secret: String,
 }
 
 impl AuthService {
-    pub fn new(pool: SqlitePool, jwt_secret: String) -> Self {
-        Self { pool, jwt_secret }
+    pub fn new(pool: SqlitePool) -> Self {
+        Self { pool }
     }
 
     /// 用户注册
@@ -71,9 +69,6 @@ impl AuthService {
         .execute(&self.pool)
         .await?;
 
-        // 生成JWT令牌
-        let token = generate_jwt_token(&user_id, &self.jwt_secret)?;
-
         Ok(UserWithToken {
             username: req.username,
             email: req.email,
@@ -88,7 +83,6 @@ impl AuthService {
             podcast_role: false,
             share_role: true,
             video_conversion_role: false,
-            token,
         })
     }
 
@@ -112,9 +106,6 @@ impl AuthService {
             return Err(AppError::auth_failed("Invalid username or password"));
         }
 
-        // 生成JWT令牌
-        let token = generate_jwt_token(&user.id.to_string(), &self.jwt_secret)?;
-
         Ok(UserWithToken {
             username: user.username,
             email: user.email,
@@ -129,7 +120,6 @@ impl AuthService {
             podcast_role: user.podcast_role,
             share_role: user.share_role,
             video_conversion_role: user.video_conversion_role,
-            token,
         })
     }
 

@@ -1,52 +1,8 @@
 //! 认证工具函数
 #![allow(dead_code)]
 
-use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
-use serde::{Deserialize, Serialize};
-use chrono::{Utc, Duration};
-
 use crate::error::AppError;
 use crate::utils::verify_password;
-
-/// JWT 声明
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Claims {
-    pub sub: String,  // user_id
-    pub exp: usize,
-    pub iat: usize,
-}
-
-/// 生成 JWT 令牌
-pub fn generate_jwt_token(user_id: &str, secret: &str) -> Result<String, anyhow::Error> {
-    let expiration = Utc::now()
-        .checked_add_signed(Duration::hours(24))
-        .expect("valid timestamp")
-        .timestamp() as usize;
-
-    let claims = Claims {
-        sub: user_id.to_string(),
-        exp: expiration,
-        iat: Utc::now().timestamp() as usize,
-    };
-
-    encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(secret.as_bytes()),
-    )
-    .map_err(Into::into)
-}
-
-/// 验证 JWT 令牌
-pub fn verify_jwt_token(token: &str, secret: &str) -> Result<Claims, AppError> {
-    decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(secret.as_bytes()),
-        &Validation::default(),
-    )
-    .map(|data| data.claims)
-    .map_err(|_| AppError::auth_failed("Invalid or expired token"))
-}
 
 /// 验证 Subsonic 认证参数
 pub fn verify_subsonic_auth(
@@ -101,21 +57,8 @@ pub fn require_playlist_permission(
 
 #[cfg(test)]
 mod tests {
-    use uuid::Uuid;
 
     use super::*;
-
-    #[test]
-    fn test_jwt_token() {
-        let user_id = Uuid::new_v4().to_string();
-        let secret = "test-secret";
-
-        let token = generate_jwt_token(&user_id, secret).unwrap();
-        assert!(!token.is_empty());
-
-        let claims = verify_jwt_token(&token, secret).unwrap();
-        assert_eq!(claims.sub, user_id);
-    }
 
     #[test]
     fn test_require_admin() {

@@ -76,7 +76,7 @@
 - ✅ 阶段1: 项目初始化
 - ✅ 阶段2: 数据库设计（9个迁移文件）
 - ✅ 阶段3: 核心功能实现
-  - ✅ 用户认证系统（AuthService, JWT + Subsonic认证）
+  - ✅ 用户认证系统（AuthService, Subsonic认证）
   - ✅ 认证中间件
   - ✅ 8个API端点模块（system, auth, browsing, search, stream, playlist, user, library）
   - ✅ 音乐库扫描服务（ScanService, 支持多种音频格式）
@@ -122,7 +122,6 @@
 - **chrono**: 时间处理
 - **uuid**: UUID 生成
 - **bcrypt**: 密码哈希
-- **jsonwebtoken**: JWT 令牌生成（用于认证）
 - **tracing**: 日志记录
 - **dotenvy**: 环境变量管理
 
@@ -228,7 +227,6 @@ symphonia = { version = "0.5", features = ["all"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.6", features = ["v4", "serde"] }
 bcrypt = "0.15"
-jsonwebtoken = "9.2"
 dotenvy = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -243,7 +241,6 @@ futures = "0.3"
 DATABASE_URL=sqlite:music_flow.db
 PORT=4040
 HOST=127.0.0.1
-JWT_SECRET=your-secret-key-change-in-production
 MUSIC_LIBRARY_PATH=/path/to/your/music
 ```
 
@@ -527,18 +524,9 @@ pub struct Song {
 ```rust
 // utils/auth_utils.rs
 use bcrypt::{hash, verify, DEFAULT_COST};
-use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{Utc, Duration};
 use rand::Rng;
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Claims {
-    pub sub: String,  // user_id
-    pub exp: usize,
-    pub iat: usize,
-}
 
 // 生成密码哈希
 pub fn hash_password(password: &str) -> Result<String, anyhow::Error> {
@@ -548,23 +536,6 @@ pub fn hash_password(password: &str) -> Result<String, anyhow::Error> {
 // 验证密码
 pub fn verify_password(password: &str, hash: &str) -> Result<bool, anyhow::Error> {
     verify(password, hash).map_err(Into::into)
-}
-
-// 生成 JWT 令牌
-pub fn generate_token(user_id: Uuid, secret: &str) -> Result<String, anyhow::Error> {
-    let expiration = Utc::now()
-        .checked_add_signed(Duration::hours(24))
-        .expect("valid timestamp")
-        .timestamp() as usize;
-
-    let claims = Claims {
-        sub: user_id.to_string(),
-        exp: expiration,
-        iat: Utc::now().timestamp() as usize,
-    };
-
-    encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_bytes()))
-        .map_err(Into::into)
 }
 
 // 生成 Subsonic 令牌（MD5(password + salt)）
@@ -603,7 +574,6 @@ use axum::{
     http::HeaderMap,
 };
 use crate::utils::auth_utils::Claims;
-use jsonwebtoken::{decode, Validation, DecodingKey};
 
 pub async fn auth_middleware(
     headers: HeaderMap,
@@ -1768,7 +1738,6 @@ curl "http://localhost:4040/rest/getCoverArt?u=admin&p=admin&v=1.16.1&c=test&id=
 
 1. **认证**:
    - 支持 Subsonic 令牌认证
-   - 可选 JWT 认证
    - 密码使用 bcrypt 哈希
 2. **授权**:
    - 严格的权限检查

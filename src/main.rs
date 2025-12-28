@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 创建 ServiceContext (共享上下文)
     let service_ctx = Arc::new(ServiceContext::new(pool.clone()));
 
-    let auth_service = Arc::new(AuthService::new(pool.clone(), config.jwt_secret.clone()));
+    let auth_service = Arc::new(AuthService::new(pool.clone()));
     let scan_service = Arc::new(ScanService::new(pool.clone(), config.music_library_path.clone()));
     let song_service = Arc::new(SongService::new(pool.clone()));
     let library_service = Arc::new(LibraryService::new(service_ctx.clone()));
@@ -207,26 +207,4 @@ async fn create_default_admin(pool: &DbPool) -> Result<(), anyhow::Error> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-
-    #[tokio::test]
-    async fn test_app_creation() {
-        // let config = AppConfig::test_config();
-        // let pool = get_db_pool(&config.database_url).await.unwrap();
-        // let pool_arc = Arc::new(pool);
-        // let auth_service = Arc::new(AuthService::new(
-        //     pool_arc.clone(),
-        //     config.jwt_secret.clone(),
-        // ));
-        // let scan_service = Arc::new(ScanService::new(
-        //     pool_arc.clone(),
-        //     config.music_library_path.clone(),
-        // ));
-        // let _app = build_app(pool_arc, auth_service, scan_service, config);
-        // 简单的编译检查，确保函数能正常工作
-        assert!(true);
-    }
 }

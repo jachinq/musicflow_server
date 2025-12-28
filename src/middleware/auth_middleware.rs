@@ -34,7 +34,6 @@ pub struct Claims {
 }
 
 /// 从请求扩展中提取用户认证信息
-/// 由认证中间件设置，不再使用 JWT token
 #[async_trait]
 impl<S> FromRequestParts<S> for Claims
 where

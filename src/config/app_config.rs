@@ -11,7 +11,6 @@ pub struct AppConfig {
     pub database_url: String,
     pub port: u16,
     pub host: String,
-    pub jwt_secret: String,
     pub music_library_path: PathBuf,
     pub rust_log: String,
     pub app_name: String,
@@ -32,8 +31,6 @@ impl AppConfig {
                 .parse()
                 .unwrap_or(4040),
             host: env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
-            jwt_secret: env::var("JWT_SECRET")
-                .unwrap_or_else(|_| "your-secret-key".to_string()),
             music_library_path: PathBuf::from(
                 env::var("MUSIC_LIBRARY_PATH").unwrap_or_else(|_| "/path/to/music".to_string()),
             ),
@@ -72,7 +69,6 @@ impl AppConfig {
             database_url: "sqlite::memory:".to_string(),
             port: 4040,
             host: "127.0.0.1".to_string(),
-            jwt_secret: "test-secret".to_string(),
             music_library_path: PathBuf::from("/tmp/test_music"),
             rust_log: "error".to_string(),
             app_name: "TestServer".to_string(),
@@ -91,20 +87,17 @@ mod tests {
         std::env::set_var("DATABASE_URL", "sqlite:test.db");
         std::env::set_var("PORT", "8080");
         std::env::set_var("HOST", "0.0.0.0");
-        std::env::set_var("JWT_SECRET", "test-secret");
         std::env::set_var("MUSIC_LIBRARY_PATH", "/tmp/music");
 
         let config = AppConfig::from_env().unwrap();
         assert_eq!(config.database_url, "sqlite:test.db");
         assert_eq!(config.port, 8080);
         assert_eq!(config.host, "0.0.0.0");
-        assert_eq!(config.jwt_secret, "test-secret");
 
         // 清理
         std::env::remove_var("DATABASE_URL");
         std::env::remove_var("PORT");
         std::env::remove_var("HOST");
-        std::env::remove_var("JWT_SECRET");
         std::env::remove_var("MUSIC_LIBRARY_PATH");
     }
 
@@ -114,7 +107,6 @@ mod tests {
             database_url: "sqlite:test.db".to_string(),
             port: 4040,
             host: "127.0.0.1".to_string(),
-            jwt_secret: "secret".to_string(),
             music_library_path: PathBuf::from("/tmp/music"),
             rust_log: "info".to_string(),
             app_name: "Test".to_string(),
