@@ -20,7 +20,7 @@ mod utils;
 
 use config::AppConfig;
 use database::{get_db_pool, run_migrations, DbPool};
-use services::{AuthService, LibraryService, ScanService, ServiceContext};
+use services::{AuthService, LibraryService, PlaylistService, ScanService, ServiceContext, UserService};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -69,6 +69,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let scan_service = Arc::new(ScanService::new(pool.clone(), config.music_library_path.clone()));
     let song_service = Arc::new(SongService::new(pool.clone()));
     let library_service = Arc::new(LibraryService::new(service_ctx.clone()));
+    let user_service = Arc::new(UserService::new(service_ctx.clone(), auth_service.clone()));
+    let playlist_service = Arc::new(PlaylistService::new(service_ctx.clone()));
 
     // 8. 构建应用路由
     let app = build_app(
@@ -77,6 +79,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         scan_service,
         song_service,
         library_service,
+        user_service,
+        playlist_service,
         config.clone(),
     );
 
@@ -98,6 +102,8 @@ fn build_app(
     scan_service: Arc<ScanService>,
     song_service: Arc<SongService>,
     library_service: Arc<LibraryService>,
+    user_service: Arc<UserService>,
+    playlist_service: Arc<PlaylistService>,
     config: AppConfig,
 ) -> Router {
     // 创建共享状态
@@ -114,8 +120,12 @@ fn build_app(
     let browsing_routes = handlers::browsing::routes(pool.clone(), song_service);
     let search_routes = handlers::search::routes().with_state(comm_state);
     let stream_routes = handlers::stream::routes().with_state(pool.clone());
-    let playlist_routes = handlers::playlist::routes().with_state(pool.clone());
-    let user_routes = handlers::user::routes().with_state(pool.clone());
+    let playlist_state = handlers::playlist::PlaylistState {
+        playlist_service,
+        pool: pool.clone(),
+    };
+    let playlist_routes = handlers::playlist::routes().with_state(playlist_state);
+    let user_routes = handlers::user::routes().with_state(user_service);
     let library_routes = handlers::library::routes(pool.clone(), scan_service, library_service);
     let advanced_routes = handlers::advanced::routes().with_state(pool.clone());
 
