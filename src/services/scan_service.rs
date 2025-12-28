@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 use crate::error::AppError;
+use crate::handlers::library::ScanState;
 use crate::models::entities::{Album, Artist, Song};
 use crate::utils::{get_image_format, write_image_to_file};
 use sha2::{Digest, Sha256};
@@ -58,7 +59,7 @@ impl ScanService {
     }
 
     /// 扫描音乐库
-    pub async fn scan_library(&self) -> Result<ScanResult, AppError> {
+    pub async fn scan_library(&self, scan_state: ScanState) -> Result<ScanResult, AppError> {
         let mut result = ScanResult::default();
 
         if !self.library_path.exists() {
@@ -67,13 +68,13 @@ impl ScanService {
 
         tracing::info!("开始扫描音乐库: {:?}", self.library_path);
 
+        let mut paths = vec![];
         for entry in WalkDir::new(&self.library_path)
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
         {
-            let path = entry.path();
-            let ext = path
+            let ext = entry.path()
                 .extension()
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
@@ -84,16 +85,27 @@ impl ScanService {
                 ext.as_str(),
                 "mp3" | "flac" | "wav" | "m4a" | "aac" | "ogg" | "opus"
             ) {
-                match self.process_audio_file(path).await {
-                    Ok(_) => {
-                        result.songs += 1;
-                    }
-                    Err(e) => {
-                        tracing::warn!("处理文件失败 {}: {}", path.display(), e);
-                        result.failed += 1;
-                    }
-                }
+                paths.push(entry.into_path());
             }
+        }
+
+        let mut count = scan_state.count.lock().await;
+        *count = paths.len();
+
+
+        for path in paths {
+            match self.process_audio_file(path.as_path()).await {
+                Ok(_) => {
+                    result.songs += 1;
+                }
+                Err(e) => {
+                    tracing::warn!("处理文件失败 {}: {}", path.display(), e);
+                    result.failed += 1;
+                }
+            }   
+
+            let mut current = scan_state.current.lock().await;
+            *current += 1;
         }
 
         // 清理已删除的文件
@@ -570,10 +582,14 @@ impl ScanService {
             .bind(song.lyrics.clone().unwrap_or_default())
             .bind(song.updated_at)
             .bind(path_to_string(path));
-            
+
             let result = query.execute(&self.pool).await?;
             if result.rows_affected() == 0 {
-                tracing::info!("歌曲无更新结果 [{:?}] file_path: {}", result, path_to_string(path));
+                tracing::info!(
+                    "歌曲无更新结果 [{:?}] file_path: {}",
+                    result,
+                    path_to_string(path)
+                );
             }
 
             // 更新歌曲后也需要更新专辑统计信息（可能时长变化了）
@@ -647,6 +663,7 @@ impl ScanService {
             genre.map(|s| s.to_string()),
             None,
         );
+        tracing::info!("创建新专辑 [artist_id={}, name={}]", album.artist_id, album.name);
 
         let mut cover_art_hash: Option<String> = None;
 
@@ -724,10 +741,7 @@ impl ScanService {
         // 只有在数据库没有任何封面信息时，才处理新封面
         if existing_cover_path.is_none() && existing_cover_hash.is_none() {
             if let Some((mime_type, data)) = cover_art_raw {
-                tracing::info!(
-                    "专辑封面从无到有 [album_id={}]",
-                    album_id
-                );
+                tracing::info!("专辑封面从无到有 [album_id={}]", album_id);
 
                 let cover_art_id = self.process_cover_art(&mime_type, &data).await?;
                 new_cover_path = Some(cover_art_id.clone());
@@ -736,10 +750,7 @@ impl ScanService {
             }
         } else {
             // 已有封面，不再更新
-            tracing::debug!(
-                "专辑已有封面，保持不变 [album_id={}]",
-                album_id
-            );
+            tracing::debug!("专辑已有封面，保持不变 [album_id={}]", album_id);
         }
 
         // 4. 只在有任何变化时才执行 UPDATE
@@ -844,11 +855,9 @@ impl ScanService {
     /// 清理数据库中文件已不存在的歌曲
     async fn cleanup_deleted_files(&self) -> Result<usize, AppError> {
         // 获取所有歌曲的文件路径
-        let all_songs = sqlx::query_as::<_, (String, String)>(
-            "SELECT id, file_path FROM songs"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let all_songs = sqlx::query_as::<_, (String, String)>("SELECT id, file_path FROM songs")
+            .fetch_all(&self.pool)
+            .await?;
 
         let mut deleted_count = 0;
         let mut deleted_song_ids = Vec::new();
@@ -885,7 +894,7 @@ impl ScanService {
     async fn cleanup_empty_albums(&self) -> Result<usize, AppError> {
         let result = sqlx::query(
             "DELETE FROM albums
-             WHERE id NOT IN (SELECT DISTINCT album_id FROM songs)"
+             WHERE id NOT IN (SELECT DISTINCT album_id FROM songs)",
         )
         .execute(&self.pool)
         .await?;
@@ -902,7 +911,7 @@ impl ScanService {
     async fn cleanup_empty_artists(&self) -> Result<usize, AppError> {
         let result = sqlx::query(
             "DELETE FROM artists
-             WHERE id NOT IN (SELECT DISTINCT artist_id FROM albums)"
+             WHERE id NOT IN (SELECT DISTINCT artist_id FROM albums)",
         )
         .execute(&self.pool)
         .await?;

@@ -24,7 +24,8 @@ pub struct ScanStatusResponse {
 #[derive(Debug, Serialize)]
 pub struct ScanStatus {
     scanning: bool,
-    count: i32,
+    count: usize,
+    current: usize,
 }
 
 /// 扫描请求参数
@@ -101,6 +102,8 @@ pub struct ScrobbleParams {
 #[derive(Clone)]
 pub struct ScanState {
     pub scanning: Arc<Mutex<bool>>,
+    pub current: Arc<Mutex<usize>>,
+    pub count: Arc<Mutex<usize>>,
 }
 
 /// 组合状态,用于 library 路由
@@ -117,12 +120,14 @@ pub async fn get_scan_status(
     axum::extract::State(state): axum::extract::State<LibraryState>,
 ) -> Result<Json<SubsonicResponse<ScanStatusResponse>>, AppError> {
     let scanning = *state.scan_state.scanning.lock().await;
+    let count = *state.scan_state.count.lock().await;
+    let current = *state.scan_state.current.lock().await;
 
     // 从 service 层获取歌曲总数
-    let count = state.library_service.get_song_count().await?;
+    // let count = state.library_service.get_song_count().await?;
 
     let result = ScanStatusResponse {
-        scan_status: ScanStatus { scanning, count },
+        scan_status: ScanStatus { scanning, count, current },
     };
 
     Ok(Json(SubsonicResponse {
@@ -157,7 +162,7 @@ pub async fn start_scan(
     let scan_state = state.scan_state.clone();
 
     tokio::spawn(async move {
-        match service.scan_library().await {
+        match service.scan_library(scan_state.clone()).await {
             Ok(result) => {
                 tracing::info!("扫描完成: {:?}", result);
             }
@@ -391,6 +396,8 @@ pub fn routes(
 ) -> Router {
     let scan_state = ScanState {
         scanning: Arc::new(Mutex::new(false)),
+        current: Arc::new(Mutex::new(0)),
+        count: Arc::new(Mutex::new(0)),
     };
 
     let library_state = LibraryState {
