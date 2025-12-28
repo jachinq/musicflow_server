@@ -14,7 +14,9 @@ use tokio::sync::Mutex;
 use tokio_util::io::ReaderStream;
 
 use crate::error::AppError;
+use crate::middleware::auth_middleware;
 use crate::models::response::{Lyrics, LyricsResponse, SubsonicResponse};
+use crate::utils::image_utils;
 
 // 防止同一封面同一尺寸被多次生成
 // Key: "{cover_art_id}_{size}"
@@ -116,12 +118,12 @@ pub async fn stream(
 
 /// GET /rest/download - 下载音乐文件
 pub async fn download(
-    claims: crate::middleware::auth_middleware::Claims,
+    claims: auth_middleware::Claims,
     axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
     Query(params): Query<DownloadParams>,
 ) -> Result<impl IntoResponse, AppError> {
     // 检查下载权限
-    let permissions = crate::middleware::auth_middleware::get_user_permissions(&pool, &claims.sub)
+    let permissions = auth_middleware::get_user_permissions(&pool, &claims.sub)
         .await
         .map_err(|_| AppError::access_denied("Failed to check permissions"))?;
 
@@ -167,21 +169,19 @@ pub async fn download(
 
 /// GET /rest/getCoverArt - 获取封面图片
 pub async fn get_cover_art(
-    // claims: crate::middleware::auth_middleware::Claims,
-    // axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
     Query(params): Query<CoverArtParams>,
 ) -> Result<impl IntoResponse, AppError> {
     let cover_art_id = &params.id;
     let size = params.size.unwrap_or(300).max(50).min(2000) as u32;
 
     // 1. 检查缓存
-    let cache_path = crate::utils::image_utils::get_webp_cache_path(cover_art_id, size);
+    let cache_path = image_utils::get_webp_cache_path(cover_art_id, size);
     if cache_path.exists() {
         return serve_image_file(cache_path).await;
     }
 
     // 2. 查找原图
-    let original_path = crate::utils::image_utils::get_original_image_path(cover_art_id)
+    let original_path = image_utils::get_original_image_path(cover_art_id)
         .ok_or_else(|| AppError::not_found("Cover art original image"))?;
 
     // 3. 获取生成锁
@@ -211,11 +211,12 @@ pub async fn get_cover_art(
     let original_path_clone = original_path.clone();
     let cache_path_clone = cache_path.clone();
     tokio::task::spawn_blocking(move || {
-        let mut config = crate::utils::image_utils::WebPConfig::default();
+        let mut config = image_utils::WebPConfig::default();
         if size > 300 {
             config.quality = 75.0; // 默认 50，超过默认尺寸的图片用 75 质量
         }
-        crate::utils::image_utils::resize_and_convert_to_webp(
+        tracing::info!("Generating WebP cache: {} -> {}", original_path_clone.display(), cache_path_clone.display());
+        image_utils::resize_and_convert_to_webp(
             &original_path_clone,
             &cache_path_clone,
             size,

@@ -3,8 +3,7 @@
 
 use crate::error::AppError;
 use crate::models::response::{
-    AlbumResponse, ArtistResponse, RatingResponse, ResponseContainer, Song,
-    SubsonicResponse,
+    AlbumResponse, ArtistResponse, RatingResponse, ResponseContainer, Song, SubsonicResponse,
 };
 use crate::services::{LibraryService, ScanService, StarItemType};
 use axum::{
@@ -18,7 +17,12 @@ use tokio::sync::Mutex;
 
 /// 扫描状态
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ScanStatusResponse {
+    pub scan_status: ScanStatus,
+}
+#[derive(Debug, Serialize)]
+pub struct ScanStatus {
     scanning: bool,
     count: i32,
 }
@@ -114,10 +118,12 @@ pub async fn get_scan_status(
 ) -> Result<Json<SubsonicResponse<ScanStatusResponse>>, AppError> {
     let scanning = *state.scan_state.scanning.lock().await;
 
-    // 获取数据库中的记录数作为count
-    let count = 0; // 简化处理
+    // 从 service 层获取歌曲总数
+    let count = state.library_service.get_song_count().await?;
 
-    let result = ScanStatusResponse { scanning, count };
+    let result = ScanStatusResponse {
+        scan_status: ScanStatus { scanning, count },
+    };
 
     Ok(Json(SubsonicResponse {
         response: ResponseContainer {
