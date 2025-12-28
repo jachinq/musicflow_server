@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
+use image::DynamicImage;
+use image::{imageops::FilterType, GenericImageView, ImageFormat};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use image::{imageops::FilterType, ImageFormat, GenericImageView};
 
 /// write image to file
 pub fn write_image_to_file(image: &[u8], file_path: &str) -> Result<(), std::io::Error> {
@@ -60,14 +61,40 @@ pub fn resize_and_convert_to_webp(
     // 缩放（Lanczos3 高质量滤波器）
     let resized = img.resize_exact(new_width, new_height, FilterType::Lanczos3);
 
-    // 保存为 WebP
-    resized
-        .save_with_format(output_path, ImageFormat::WebP)
-        .map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to save WebP: {}", e))
+    // 转换为 WebP
+    let webp = compress_img(&resized, _config.quality);
+    if webp.is_err() {
+        // 压缩失败，保存为不压缩的 WebP
+        resized
+            .save_with_format(output_path, ImageFormat::WebP)
+            .map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to save WebP: {}", e),
+                )
+            })?;
+    } else {
+        let output_path = output_path.to_string_lossy().to_string();
+        write_image_to_file(&webp.unwrap(), &output_path).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to compress and save WebP: {}", e),
+            )
         })?;
+    }
 
     Ok(())
+}
+
+/// 根据 img 压缩成 webp 格式
+pub fn compress_img(img: &DynamicImage, qulity: f32) -> Result<Vec<u8>, String> {
+    match webp::Encoder::from_image(img) {
+        Err(err) => Err(err.to_string()),
+        Ok(encoder) => {
+            let webp = encoder.encode(qulity);
+            Ok(webp.to_vec())
+        }
+    }
 }
 
 /// 计算缩放尺寸（保持宽高比，不放大）
@@ -116,4 +143,3 @@ pub fn get_original_image_path(cover_art_id: &str) -> Option<PathBuf> {
 
     None
 }
-

@@ -25,6 +25,7 @@ symphonia = { version = "0.5", features = ["mp3", "aac", "flac", "isomp4", "ogg"
 
 # 图片处理
 image = { version = "0.25", features = ["webp", "jpeg", "png"] }
+webp = "0.3.0"
 
 # 工具库
 once_cell = "1.19"
