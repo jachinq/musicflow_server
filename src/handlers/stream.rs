@@ -1,24 +1,17 @@
 //! 流媒体端点处理器
 #![allow(dead_code)]
 
-use axum::{
-    Router,
-    routing::get,
-    extract::Query,
-    response::IntoResponse,
-    http::HeaderMap,
-    Json,
-};
-use tokio::fs::File;
-use tokio_util::io::ReaderStream;
 use axum::body::Body;
+use axum::{extract::Query, http::HeaderMap, response::IntoResponse, routing::get, Json, Router};
 use serde::Deserialize;
-use std::sync::Arc;
 use sqlx::SqlitePool;
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::fs::File;
+use tokio_util::io::ReaderStream;
 
 use crate::error::AppError;
-use crate::models::response::{SubsonicResponse, ResponseContainer};
+use crate::models::response::{Lyrics, LyricsResponse, SubsonicResponse};
 
 /// 流媒体参数
 #[derive(Debug, Deserialize)]
@@ -100,14 +93,19 @@ pub async fn stream(
 
     // 设置响应头
     let mut headers = HeaderMap::new();
-    let content_type = song.content_type.unwrap_or_else(|| "audio/mpeg".to_string());
+    let content_type = song
+        .content_type
+        .unwrap_or_else(|| "audio/mpeg".to_string());
     headers.insert("Content-Type", content_type.parse().unwrap());
     headers.insert("Accept-Ranges", "bytes".parse().unwrap());
 
     // 如果估计内容长度，可以设置 Content-Length
     if params.estimate_content_length.unwrap_or(false) {
         if let Ok(metadata) = tokio::fs::metadata(&file_path).await {
-            headers.insert("Content-Length", metadata.len().to_string().parse().unwrap());
+            headers.insert(
+                "Content-Length",
+                metadata.len().to_string().parse().unwrap(),
+            );
         }
     }
 
@@ -130,12 +128,9 @@ pub async fn download(
     }
 
     // 根据ID查询歌曲信息
-    let song = sqlx::query!(
-        "SELECT file_path, title FROM songs WHERE id = ?",
-        params.id
-    )
-    .fetch_optional(&*pool)
-    .await?;
+    let song = sqlx::query!("SELECT file_path, title FROM songs WHERE id = ?", params.id)
+        .fetch_optional(&*pool)
+        .await?;
 
     let song = song.ok_or_else(|| AppError::not_found("Song"))?;
 
@@ -160,7 +155,9 @@ pub async fn download(
     headers.insert("Content-Type", "application/octet-stream".parse().unwrap());
     headers.insert(
         "Content-Disposition",
-        format!("attachment; filename=\"{}\"", song.title).parse().unwrap(),
+        format!("attachment; filename=\"{}\"", song.title)
+            .parse()
+            .unwrap(),
     );
 
     Ok((headers, body).into_response())
@@ -202,7 +199,8 @@ async fn serve_image_file(file_path: PathBuf) -> Result<impl IntoResponse, AppEr
     let body = Body::from_stream(stream);
 
     // 根据文件扩展名确定 Content-Type
-    let ext = file_path.extension()
+    let ext = file_path
+        .extension()
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_lowercase();
@@ -221,21 +219,94 @@ async fn serve_image_file(file_path: PathBuf) -> Result<impl IntoResponse, AppEr
     Ok((headers, body).into_response())
 }
 
+/// 歌词查询参数
+#[derive(Debug, Deserialize)]
+pub struct LyricsParams {
+    pub artist: Option<String>,
+    pub title: Option<String>,
+    pub u: String,
+    pub t: Option<String>,
+    pub s: Option<String>,
+    pub p: Option<String>,
+    pub v: String,
+    pub c: String,
+    pub f: Option<String>,
+}
+
 /// GET /rest/getLyrics - 获取歌词
 pub async fn get_lyrics(
-    axum::extract::State(_pool): axum::extract::State<Arc<SqlitePool>>,
-    _params: Query<DownloadParams>, // 复用 DownloadParams 结构
-) -> Result<Json<SubsonicResponse<()>>, AppError> {
-    // 歌曲歌词功能需要额外的歌词文件或外部服务
-    // 这里返回空的歌词响应
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    }))
+    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    Query(params): Query<LyricsParams>,
+) -> Result<Json<SubsonicResponse<LyricsResponse>>, AppError> {
+    // 构建查询条件
+    let song = if let (Some(artist), Some(title)) = (params.artist.as_ref(), params.title.as_ref())
+    {
+        // 同时有艺术家和标题
+        sqlx::query_as::<_, (Option<String>, String, String)>(
+            "SELECT s.lyrics, s.artist_id, s.title
+             FROM songs s
+             JOIN artists a ON s.artist_id = a.id
+             WHERE s.title LIKE ? AND a.name LIKE ?
+             LIMIT 1",
+        )
+        .bind(format!("%{}%", title))
+        .bind(format!("%{}%", artist))
+        .fetch_optional(&*pool)
+        .await?
+    } else if let Some(title) = params.title.as_ref() {
+        // 只有标题
+        sqlx::query_as::<_, (Option<String>, String, String)>(
+            "SELECT lyrics, artist_id, title
+             FROM songs
+             WHERE title LIKE ?
+             LIMIT 1",
+        )
+        .bind(format!("%{}%", title))
+        .fetch_optional(&*pool)
+        .await?
+    } else if let Some(artist) = params.artist.as_ref() {
+        // 只有艺术家
+        sqlx::query_as::<_, (Option<String>, String, String)>(
+            "SELECT s.lyrics, s.artist_id, s.title
+             FROM songs s
+             JOIN artists a ON s.artist_id = a.id
+             WHERE a.name LIKE ? AND s.lyrics IS NOT NULL
+             LIMIT 1",
+        )
+        .bind(format!("%{}%", artist))
+        .fetch_optional(&*pool)
+        .await?
+    } else {
+        None
+    };
+
+    // 如果找到歌曲，查询艺术家名称并返回歌词
+    if let Some((lyrics, artist_id, title)) = song {
+        let artist_name = sqlx::query_scalar::<_, String>("SELECT name FROM artists WHERE id = ?")
+            .bind(&artist_id)
+            .fetch_optional(&*pool)
+            .await?;
+
+        let lyrics_response = LyricsResponse {
+            lyrics: Lyrics {
+                artist: artist_name,
+                title: Some(title),
+                text: lyrics,
+            },
+        };
+
+        Ok(Json(SubsonicResponse::ok(Some(lyrics_response))))
+    } else {
+        // 如果没有找到歌词，返回空的歌词对象
+        let lyrics_response = LyricsResponse {
+            lyrics: Lyrics {
+                artist: params.artist,
+                title: params.title,
+                text: None,
+            },
+        };
+        Ok(Json(SubsonicResponse::ok(Some(lyrics_response))))
+    }
 }
 
 /// GET /rest/getAvatar - 获取用户头像

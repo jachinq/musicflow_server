@@ -13,6 +13,7 @@ CREATE TABLE songs (
     content_type TEXT,
     file_path TEXT NOT NULL,
     file_size BIGINT,
+    lyrics TEXT,
     play_count INTEGER DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))

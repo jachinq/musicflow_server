@@ -97,6 +97,10 @@ pub struct SimilarArtists {
 
 /// 歌词
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LyricsResponse {
+    pub lyrics: Lyrics,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lyrics {
     pub artist: Option<String>,
     pub title: Option<String>,

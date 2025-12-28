@@ -21,6 +21,7 @@ pub struct Song {
     pub content_type: Option<String>,
     pub file_path: String,
     pub file_size: Option<i64>,
+    pub lyrics: Option<String>,
     pub play_count: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -41,6 +42,7 @@ impl Song {
         year: Option<i32>,
         content_type: Option<String>,
         file_size: Option<i64>,
+        lyrics: Option<String>,
     ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
@@ -56,6 +58,7 @@ impl Song {
             content_type,
             file_path,
             file_size,
+            lyrics,
             play_count: 0,
             created_at: Utc::now(),
             updated_at: Utc::now(),

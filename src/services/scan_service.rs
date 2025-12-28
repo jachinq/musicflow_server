@@ -47,6 +47,7 @@ struct AudioMetadata {
     content_type: String,
     file_size: Option<u64>,
     cover_art_raw: Option<(String, Box<[u8]>)>,
+    lyrics: Option<String>,
 }
 
 impl ScanService {
@@ -126,6 +127,7 @@ impl ScanService {
             &metadata.content_type,
             metadata.file_size,
             metadata.cover_art_raw,
+            metadata.lyrics.as_deref(),
         )
         .await?;
         Ok(())
@@ -185,6 +187,7 @@ impl ScanService {
             content_type,
             file_size,
             cover_art_raw: metadata.cover_art_raw,
+            lyrics: metadata.lyrics,
         })
     }
 
@@ -292,6 +295,9 @@ impl ScanService {
                             }
                         }
                     }
+                    Some(StandardTagKey::Lyrics) => {
+                        metadata.lyrics = Some(tag.value.to_string());
+                    }
                     _ => {}
                 }
             }
@@ -369,6 +375,7 @@ impl ScanService {
         content_type: &str,
         file_size: Option<u64>,
         cover_art_raw: Option<(String, Box<[u8]>)>,
+        lyrics: Option<&str>,
     ) -> Result<(), AppError> {
         // 插入或更新艺术家
         let artist_id = self.get_or_create_artist(artist_name).await?;
@@ -392,6 +399,7 @@ impl ScanService {
             path,
             content_type,
             file_size,
+            lyrics,
         )
         .await?;
 
@@ -506,6 +514,7 @@ impl ScanService {
         path: &Path,
         content_type: &str,
         file_size: Option<u64>,
+        lyrics: Option<&str>,
     ) -> Result<(), AppError> {
         // 先尝试查找
         let existing = sqlx::query_scalar::<_, String>("SELECT id FROM songs WHERE file_path = ?")
@@ -527,12 +536,13 @@ impl ScanService {
             year,
             Some(content_type.to_string()),
             file_size.map(|s| s as i64),
+            lyrics.map(|s| s.to_string()),
         );
 
         if existing.is_some() {
             // 歌曲已存在，进行更新
             sqlx::query(
-                "UPDATE songs                
+                "UPDATE songs
                  SET title = ?,
                      track_number = ?,
                      disc_number = ?,
@@ -542,6 +552,7 @@ impl ScanService {
                      year = ?,
                      content_type = ?,
                      file_size = ?,
+                     lyrics = ?,
                      updated_at = CURRENT_TIMESTAMP
                  WHERE file_path = ?",
             )
@@ -554,6 +565,7 @@ impl ScanService {
             .bind(&song.year)
             .bind(&song.content_type)
             .bind(&song.file_size)
+            .bind(&song.lyrics)
             .bind(song.updated_at)
             .bind(path_to_string(path))
             .execute(&self.pool)
@@ -563,9 +575,9 @@ impl ScanService {
 
         sqlx::query(
             "INSERT INTO songs (id, album_id, artist_id, title, track_number, disc_number,
-             duration, bit_rate, genre, year, content_type, file_path, file_size, play_count,
+             duration, bit_rate, genre, year, content_type, file_path, file_size, lyrics, play_count,
              created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
         )
         .bind(&song.id)
         .bind(&song.album_id)
@@ -580,6 +592,7 @@ impl ScanService {
         .bind(&song.content_type)
         .bind(&song.file_path)
         .bind(&song.file_size)
+        .bind(&song.lyrics)
         .bind(song.created_at)
         .bind(song.updated_at)
         .execute(&self.pool)
