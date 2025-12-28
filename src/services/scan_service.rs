@@ -689,7 +689,13 @@ impl ScanService {
         Ok(album.id)
     }
 
-    /// 智能更新专辑信息（只在有变化时更新）
+    /// 智能更新专辑信息（采用"已有值优先，只填充空值"策略）
+    ///
+    /// 策略说明：
+    /// - year/genre: 如果数据库已有值，保持不变；只在为 NULL 时用新值填充
+    /// - cover: 只在数据库完全没有封面时才写入新封面
+    ///
+    /// 这样可以避免因标签不一致导致的反复更新问题
     #[allow(clippy::too_many_arguments)]
     async fn update_album_if_needed(
         &self,
@@ -702,43 +708,41 @@ impl ScanService {
         existing_cover_hash: Option<String>,
         cover_art_raw: Option<(String, Box<[u8]>)>,
     ) -> Result<(), AppError> {
-        // 1. 检查元数据是否变化
-        let year_changed = new_year != existing_year;
-        let genre_changed = new_genre != existing_genre;
+        // 1. 采用"已有值优先"策略：只在数据库为空时才用新值填充
+        let year_to_use = existing_year.or(new_year);
+        let genre_to_use = existing_genre.or(new_genre);
 
-        // 2. 检查封面是否需要更新
-        let mut new_cover_path = existing_cover_path;
+        // 2. 检查是否有变化（从无到有才算变化）
+        let year_changed = year_to_use != existing_year;
+        let genre_changed = genre_to_use != existing_genre;
+
+        // 3. 封面处理：只在数据库完全没有封面时才写入
+        let mut new_cover_path = existing_cover_path.clone();
         let mut new_cover_hash = existing_cover_hash.clone();
         let mut cover_changed = false;
 
-        if let Some((mime_type, data)) = cover_art_raw {
-            // 计算新封面的 hash
-            let current_hash = calculate_image_hash(&data);
-
-            // 对比 hash：只在不同时才处理图片
-            if existing_cover_hash.as_ref() != Some(&current_hash) {
+        // 只有在数据库没有任何封面信息时，才处理新封面
+        if existing_cover_path.is_none() && existing_cover_hash.is_none() {
+            if let Some((mime_type, data)) = cover_art_raw {
                 tracing::info!(
-                    "检测到专辑封面变化 [album_id={}]: hash {} -> {}",
-                    album_id,
-                    existing_cover_hash.as_deref().unwrap_or("None"),
-                    current_hash
+                    "专辑封面从无到有 [album_id={}]",
+                    album_id
                 );
 
-                // 处理新封面
                 let cover_art_id = self.process_cover_art(&mime_type, &data).await?;
-                new_cover_path = Some(cover_art_id);
-                new_cover_hash = Some(current_hash);
+                new_cover_path = Some(cover_art_id.clone());
+                new_cover_hash = Some(calculate_image_hash(&data));
                 cover_changed = true;
-            } else {
-                tracing::debug!(
-                    "专辑封面未变化，跳过处理 [album_id={}, hash={}]",
-                    album_id,
-                    current_hash
-                );
             }
+        } else {
+            // 已有封面，不再更新
+            tracing::debug!(
+                "专辑已有封面，保持不变 [album_id={}]",
+                album_id
+            );
         }
 
-        // 3. 只在有任何变化时才执行 UPDATE
+        // 4. 只在有任何变化时才执行 UPDATE
         if year_changed || genre_changed || cover_changed {
             let changes: Vec<&str> = [
                 year_changed.then_some("year"),
@@ -750,7 +754,7 @@ impl ScanService {
             .collect();
 
             tracing::info!(
-                "更新专辑信息 [album_id={}]: 变更字段={:?}",
+                "填充专辑空值 [album_id={}]: 变更字段={:?}",
                 album_id,
                 changes
             );
@@ -760,15 +764,15 @@ impl ScanService {
                  SET year = ?, genre = ?, cover_art_path = ?, cover_art_hash = ?, updated_at = CURRENT_TIMESTAMP
                  WHERE id = ?",
             )
-            .bind(new_year)
-            .bind(new_genre)
+            .bind(year_to_use)
+            .bind(genre_to_use)
             .bind(&new_cover_path)
             .bind(&new_cover_hash)
             .bind(album_id)
             .execute(&self.pool)
             .await?;
         } else {
-            tracing::debug!("专辑信息无变化，跳过更新 [album_id={}]", album_id);
+            tracing::debug!("专辑信息无需填充 [album_id={}]", album_id);
         }
 
         Ok(())
