@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Flow Server - 管理面板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 加载动画 */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        /* 模态框遮罩 */
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        /* 通知样式 */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            min-width: 300px;
+            max-width: 500px;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 9999;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification-success {
+            background-color: #10b981;
+            color: white;
+        }
+
+        .notification-error {
+            background-color: #ef4444;
+            color: white;
+        }
+
+        .notification-warning {
+            background-color: #f59e0b;
+            color: white;
+        }
+
+        .notification-info {
+            background-color: #3b82f6;
+            color: white;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- 头部 -->
+    <header class="bg-blue-600 text-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 class="text-2xl font-bold">Music Flow Server - 管理面板</h1>
+            <div id="user-info" class="hidden items-center space-x-4">
+                <span id="current-user" class="text-sm"></span>
+                <button id="logout-btn" class="bg-blue-700 hover:bg-blue-800 px-4 py-2 rounded text-sm transition">
+                    退出登录
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主容器 -->
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        <!-- 登录区域 -->
+        <div id="login-section" class="max-w-md mx-auto">
+            <div class="bg-white rounded-lg shadow-md p-8">
+                <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">登录</h2>
+                <form id="login-form" class="space-y-4">
+                    <div>
+                        <label for="username" class="block text-sm font-medium text-gray-700 mb-1">用户名</label>
+                        <input
+                            type="text"
+                            id="username"
+                            name="username"
+                            value="admin"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            required
+                        >
+                    </div>
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                        <input
+                            type="password"
+                            id="password"
+                            name="password"
+                            value="admin"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            required
+                        >
+                    </div>
+                    <button
+                        type="submit"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition"
+                    >
+                        登录
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 管理面板区域 -->
+        <div id="dashboard-section" class="hidden space-y-8">
+            <!-- 扫描管理 -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-bold mb-4 text-gray-800">音乐库扫描</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div class="bg-gray-50 p-4 rounded-md">
+                        <div class="text-sm text-gray-600 mb-1">扫描状态</div>
+                        <div class="flex items-center">
+                            <span id="scan-status-indicator" class="w-3 h-3 rounded-full bg-gray-400 mr-2"></span>
+                            <span id="scan-status-text" class="text-lg font-semibold text-gray-800">空闲</span>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-md">
+                        <div class="text-sm text-gray-600 mb-1">歌曲总数</div>
+                        <div id="song-count" class="text-lg font-semibold text-gray-800">-</div>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-md flex items-center justify-center">
+                        <button
+                            id="start-scan-btn"
+                            class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        >
+                            开始扫描
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 用户管理 -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-800">用户管理</h2>
+                    <button
+                        id="add-user-btn"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition"
+                    >
+                        + 新增用户
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">用户名</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">邮箱</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">管理员</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="user-table-body" class="bg-white divide-y divide-gray-200">
+                            <!-- 用户列表将通过 JavaScript 动态生成 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 模态框容器 -->
+    <div id="modal-container"></div>
+
+    <!-- 通知容器 -->
+    <div id="notification-container"></div>
+
+    <script>
+        // ============= 工具函数 =============
+
+        // 显示通知
+        function showNotification(message, type = 'info', duration = 3000) {
+            const container = document.getElementById('notification-container');
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type}`;
+            notification.textContent = message;
+
+            container.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'slideIn 0.3s ease-out reverse';
+                setTimeout(() => {
+                    container.removeChild(notification);
+                }, 300);
+            }, duration);
+        }
+
+        // API 调用封装
+        async function apiCall(url, options = {}) {
+            try {
+                const response = await fetch(url, options);
+
+                if (!response.ok) {
+                    let errorMsg = '请求失败';
+                    try {
+                        const error = await response.json();
+                        errorMsg = error.message || error.error || errorMsg;
+                    } catch (e) {
+                        errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+                    }
+                    throw new Error(errorMsg);
+                }
+
+                return await response.json();
+            } catch (error) {
+                console.error('API 调用错误:', error);
+                throw error;
+            }
+        }
+
+        // ============= 认证管理模块 =============
+
+        const AuthManager = {
+            async login(username, password) {
+                const data = await apiCall('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                localStorage.setItem('username', username);
+                localStorage.setItem('password', password);
+                localStorage.setItem('is_admin', data.is_admin || false);
+
+                return data;
+            },
+
+            logout() {
+                localStorage.clear();
+                window.location.reload();
+            },
+
+            isAuthenticated() {
+                return !!localStorage.getItem('username');
+            },
+
+            getCurrentUser() {
+                return localStorage.getItem('username');
+            },
+
+            getAuthParams() {
+                const u = localStorage.getItem('username');
+                const p = localStorage.getItem('password');
+                return `u=${encodeURIComponent(u)}&p=${encodeURIComponent(p)}&v=1.16.1&c=WebPanel`;
+            },
+
+            buildApiUrl(endpoint) {
+                const authParams = this.getAuthParams();
+                const separator = endpoint.includes('?') ? '&' : '?';
+                return `${endpoint}${separator}${authParams}`;
+            }
+        };
+
+        // ============= 扫描管理模块 =============
+
+        const ScanManager = {
+            pollingInterval: null,
+
+            async getStatus() {
+                const url = AuthManager.buildApiUrl('/rest/getScanStatus');
+                const data = await apiCall(url);
+                return data['subsonic-response'].scanStatus;
+            },
+
+            async startScan() {
+                const url = AuthManager.buildApiUrl('/rest/startScan');
+                await apiCall(url, { method: 'POST' });
+            },
+
+            startPolling() {
+                this.updateStatus();
+                this.pollingInterval = setInterval(() => {
+                    this.updateStatus();
+                }, 2000);
+            },
+
+            stopPolling() {
+                if (this.pollingInterval) {
+                    clearInterval(this.pollingInterval);
+                    this.pollingInterval = null;
+                }
+            },
+
+            async updateStatus() {
+                try {
+                    const status = await this.getStatus();
+                    this.renderStatus(status);
+
+                    // 如果扫描已完成（不在扫描中），停止轮询
+                    if (!status.scanning && this.pollingInterval) {
+                        this.stopPolling();
+                        console.log('扫描已完成，停止状态轮询');
+                    }
+                } catch (error) {
+                    console.error('获取扫描状态失败:', error);
+                }
+            },
+
+            renderStatus(status) {
+                const indicator = document.getElementById('scan-status-indicator');
+                const text = document.getElementById('scan-status-text');
+                const countEl = document.getElementById('song-count');
+                const btn = document.getElementById('start-scan-btn');
+
+                if (status.scanning) {
+                    indicator.className = 'w-3 h-3 rounded-full bg-green-500 mr-2 animate-pulse';
+                    text.textContent = '正在扫描';
+                    btn.disabled = true;
+                } else {
+                    indicator.className = 'w-3 h-3 rounded-full bg-gray-400 mr-2';
+                    text.textContent = '空闲';
+                    btn.disabled = false;
+                }
+
+                countEl.textContent = status.count ? status.count.toLocaleString() + ' 首' : '-';
+            }
+        };
+
+        // ============= 用户管理模块 =============
+
+        const UserManager = {
+            async listUsers() {
+                const url = AuthManager.buildApiUrl('/rest/getUsers');
+                const data = await apiCall(url);
+                return data['subsonic-response'].users || [];
+            },
+
+            async createUser(userData) {
+                const url = AuthManager.buildApiUrl('/rest/createUser');
+                await apiCall(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(userData)
+                });
+            },
+
+            async deleteUser(username) {
+                const url = AuthManager.buildApiUrl('/rest/deleteUser');
+                await apiCall(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username })
+                });
+            },
+
+            async changePassword(username, password) {
+                const url = AuthManager.buildApiUrl('/rest/changePassword');
+                await apiCall(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+            },
+
+            async loadAndRender() {
+                try {
+                    const users = await this.listUsers();
+                    console.log('用户列表:', users);
+                    this.renderUserTable(users);
+                } catch (error) {
+                    showNotification('加载用户列表失败: ' + error.message, 'error');
+                    console.error('加载用户列表失败:', error);
+                }
+            },
+
+            renderUserTable(users) {
+                const tbody = document.getElementById('user-table-body');
+                const currentUser = AuthManager.getCurrentUser();
+
+                tbody.innerHTML = users.map(user => `
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            ${this.escapeHtml(user.username)}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            ${this.escapeHtml(user.email || '-')}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            ${user.adminRole ? '✓' : ''}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                            <button
+                                onclick="UserManager.showChangePasswordModal('${this.escapeHtml(user.username)}')"
+                                class="text-blue-600 hover:text-blue-800 font-medium"
+                            >
+                                修改密码
+                            </button>
+                            ${user.username !== currentUser ? `
+                                <button
+                                    onclick="UserManager.confirmDelete('${this.escapeHtml(user.username)}')"
+                                    class="text-red-600 hover:text-red-800 font-medium"
+                                >
+                                    删除
+                                </button>
+                            ` : ''}
+                        </td>
+                    </tr>
+                `).join('');
+            },
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            },
+
+            showAddUserModal() {
+                const modalHtml = `
+                    <div class="modal-overlay fixed inset-0 flex items-center justify-center z-50">
+                        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+                            <h3 class="text-lg font-bold mb-4 text-gray-800">新增用户</h3>
+                            <form id="add-user-form" class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">用户名</label>
+                                    <input
+                                        type="text"
+                                        name="username"
+                                        required
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                                    <input
+                                        type="password"
+                                        name="password"
+                                        required
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
+                                    <input
+                                        type="email"
+                                        name="email"
+                                        required
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                </div>
+                                <div class="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        id="is_admin"
+                                        name="is_admin"
+                                        class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                    >
+                                    <label for="is_admin" class="ml-2 text-sm text-gray-700">设为管理员</label>
+                                </div>
+                                <div class="flex space-x-3 pt-2">
+                                    <button
+                                        type="submit"
+                                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition"
+                                    >
+                                        创建
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onclick="UIManager.closeModal()"
+                                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-medium py-2 px-4 rounded-md transition"
+                                    >
+                                        取消
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('modal-container').innerHTML = modalHtml;
+
+                document.getElementById('add-user-form').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const formData = new FormData(e.target);
+                    const userData = {
+                        username: formData.get('username'),
+                        password: formData.get('password'),
+                        email: formData.get('email'),
+                        is_admin: formData.get('is_admin') === 'on'
+                    };
+
+                    try {
+                        await UserManager.createUser(userData);
+                        showNotification('用户创建成功', 'success');
+                        UIManager.closeModal();
+                        await UserManager.loadAndRender();
+                    } catch (error) {
+                        showNotification('创建用户失败: ' + error.message, 'error');
+                    }
+                });
+            },
+
+            showChangePasswordModal(username) {
+                const modalHtml = `
+                    <div class="modal-overlay fixed inset-0 flex items-center justify-center z-50">
+                        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+                            <h3 class="text-lg font-bold mb-4 text-gray-800">修改密码 - ${this.escapeHtml(username)}</h3>
+                            <form id="change-password-form" class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">新密码</label>
+                                    <input
+                                        type="password"
+                                        name="password"
+                                        required
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                </div>
+                                <div class="flex space-x-3 pt-2">
+                                    <button
+                                        type="submit"
+                                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition"
+                                    >
+                                        确认修改
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onclick="UIManager.closeModal()"
+                                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-medium py-2 px-4 rounded-md transition"
+                                    >
+                                        取消
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('modal-container').innerHTML = modalHtml;
+
+                document.getElementById('change-password-form').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const formData = new FormData(e.target);
+                    const password = formData.get('password');
+
+                    try {
+                        await UserManager.changePassword(username, password);
+                        showNotification('密码修改成功', 'success');
+                        UIManager.closeModal();
+
+                        // 如果修改的是当前用户的密码，更新 localStorage
+                        if (username === AuthManager.getCurrentUser()) {
+                            localStorage.setItem('password', password);
+                        }
+                    } catch (error) {
+                        showNotification('修改密码失败: ' + error.message, 'error');
+                    }
+                });
+            },
+
+            confirmDelete(username) {
+                if (username === AuthManager.getCurrentUser()) {
+                    showNotification('不能删除当前登录的用户', 'warning');
+                    return;
+                }
+
+                const modalHtml = `
+                    <div class="modal-overlay fixed inset-0 flex items-center justify-center z-50">
+                        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+                            <h3 class="text-lg font-bold mb-4 text-gray-800">确认删除</h3>
+                            <p class="text-gray-600 mb-6">确定要删除用户 <strong>${this.escapeHtml(username)}</strong> 吗？此操作不可撤销。</p>
+                            <div class="flex space-x-3">
+                                <button
+                                    onclick="UserManager.executeDelete('${this.escapeHtml(username)}')"
+                                    class="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-md transition"
+                                >
+                                    确认删除
+                                </button>
+                                <button
+                                    onclick="UIManager.closeModal()"
+                                    class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-medium py-2 px-4 rounded-md transition"
+                                >
+                                    取消
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('modal-container').innerHTML = modalHtml;
+            },
+
+            async executeDelete(username) {
+                try {
+                    await UserManager.deleteUser(username);
+                    showNotification('用户删除成功', 'success');
+                    UIManager.closeModal();
+                    await UserManager.loadAndRender();
+                } catch (error) {
+                    showNotification('删除用户失败: ' + error.message, 'error');
+                }
+            }
+        };
+
+        // ============= UI 管理模块 =============
+
+        const UIManager = {
+            showLoginForm() {
+                document.getElementById('login-section').classList.remove('hidden');
+                document.getElementById('dashboard-section').classList.add('hidden');
+                document.getElementById('user-info').classList.add('hidden');
+            },
+
+            showDashboard() {
+                document.getElementById('login-section').classList.add('hidden');
+                document.getElementById('dashboard-section').classList.remove('hidden');
+                document.getElementById('user-info').classList.remove('hidden');
+                document.getElementById('user-info').classList.add('flex');
+                document.getElementById('current-user').textContent = `已登录: ${AuthManager.getCurrentUser()}`;
+            },
+
+            closeModal() {
+                document.getElementById('modal-container').innerHTML = '';
+            }
+        };
+
+        // ============= 事件处理 =============
+
+        // 登录表单提交
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const username = formData.get('username');
+            const password = formData.get('password');
+
+            const btn = e.target.querySelector('button[type="submit"]');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '登录中...';
+
+            try {
+                await AuthManager.login(username, password);
+                showNotification('登录成功', 'success');
+                UIManager.showDashboard();
+                await UserManager.loadAndRender();
+
+                // 检查当前扫描状态，如果正在扫描则启动轮询
+                try {
+                    const status = await ScanManager.getStatus();
+                    ScanManager.renderStatus(status);
+
+                    if (status.scanning) {
+                        ScanManager.startPolling();
+                    }
+                } catch (error) {
+                    console.error('获取扫描状态失败:', error);
+                }
+            } catch (error) {
+                showNotification('登录失败: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        });
+
+        // 退出登录
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            AuthManager.logout();
+        });
+
+        // 开始扫描
+        document.getElementById('start-scan-btn').addEventListener('click', async (e) => {
+            const btn = e.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '启动中...';
+
+            try {
+                await ScanManager.startScan();
+                showNotification('扫描已开始', 'success');
+
+                // 启动扫描后立即开始轮询
+                ScanManager.startPolling();
+            } catch (error) {
+                showNotification('启动扫描失败: ' + error.message, 'error');
+                btn.disabled = false;
+            } finally {
+                btn.textContent = originalText;
+            }
+        });
+
+        // 新增用户
+        document.getElementById('add-user-btn').addEventListener('click', () => {
+            UserManager.showAddUserModal();
+        });
+
+        // ============= 初始化 =============
+
+        // 页面加载时检查认证状态
+        window.addEventListener('DOMContentLoaded', async () => {
+            if (AuthManager.isAuthenticated()) {
+                UIManager.showDashboard();
+                UserManager.loadAndRender();
+
+                // 检查当前扫描状态，如果正在扫描则启动轮询
+                try {
+                    const status = await ScanManager.getStatus();
+                    ScanManager.renderStatus(status);
+
+                    if (status.scanning) {
+                        ScanManager.startPolling();
+                    }
+                } catch (error) {
+                    console.error('获取初始扫描状态失败:', error);
+                }
+            } else {
+                UIManager.showLoginForm();
+            }
+        });
+
+        // 页面卸载时停止轮询
+        window.addEventListener('beforeunload', () => {
+            ScanManager.stopPolling();
+        });
+    </script>
+</body>
+</html>

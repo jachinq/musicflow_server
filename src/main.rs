@@ -7,6 +7,7 @@ use crate::services::{SongService, song_service::CommState};
 use sqlx::query;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tower_http::services::ServeDir;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod config;
@@ -129,13 +130,8 @@ fn build_app(
     let library_routes = handlers::library::routes(pool.clone(), scan_service, library_service);
     let advanced_routes = handlers::advanced::routes().with_state(pool.clone());
 
-    // 合并所有路由
-    let app = Router::new()
-        // 系统端点（公开访问）
-        .merge(system_routes)
-        // 认证端点（公开访问）
-        .merge(auth_routes)
-        // 需要认证的端点
+    // 需要认证的 API 路由
+    let protected_routes = Router::new()
         .merge(browsing_routes)
         .merge(search_routes)
         .merge(stream_routes)
@@ -144,7 +140,18 @@ fn build_app(
         .merge(library_routes)
         .merge(advanced_routes)
         // 认证中间件（仅保护需要认证的端点）
-        .layer(axum_middleware::from_fn(middleware::auth_middleware))
+        .layer(axum_middleware::from_fn(middleware::auth_middleware));
+
+    // 合并所有路由
+    let app = Router::new()
+        // 系统端点（公开访问）
+        .merge(system_routes)
+        // 认证端点（公开访问）
+        .merge(auth_routes)
+        // 需要认证的端点
+        .merge(protected_routes)
+        // 静态文件服务（web 管理面板，公开访问）
+        .nest_service("/", ServeDir::new("web"))
         // CORS 配置
         .layer(
             tower_http::cors::CorsLayer::new()

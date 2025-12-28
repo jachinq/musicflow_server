@@ -34,7 +34,7 @@ pub struct UserResponse {
 /// 用户列表响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsersResponse {
-    pub user: Vec<UserResponse>,
+    pub users: Vec<UserResponse>,
 }
 
 // DTO -> Response 转换

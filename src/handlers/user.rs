@@ -55,7 +55,7 @@ pub async fn get_users(
     let user_responses: Vec<UserResponse> = users.into_iter().map(|u| u.into()).collect();
 
     let result = UsersResponse {
-        user: user_responses,
+        users: user_responses,
     };
 
     Ok(Json(SubsonicResponse {
