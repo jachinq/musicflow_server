@@ -20,7 +20,7 @@ mod utils;
 
 use config::AppConfig;
 use database::{get_db_pool, run_migrations, DbPool};
-use services::{AuthService, ScanService};
+use services::{AuthService, LibraryService, ScanService, ServiceContext};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -61,9 +61,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 7. 创建服务实例
     let pool_arc = Arc::new(pool.clone());
+
+    // 创建 ServiceContext (共享上下文)
+    let service_ctx = Arc::new(ServiceContext::new(pool.clone()));
+
     let auth_service = Arc::new(AuthService::new(pool.clone(), config.jwt_secret.clone()));
     let scan_service = Arc::new(ScanService::new(pool.clone(), config.music_library_path.clone()));
-    let song_service = Arc::new(SongService::new(pool));
+    let song_service = Arc::new(SongService::new(pool.clone()));
+    let library_service = Arc::new(LibraryService::new(service_ctx.clone()));
 
     // 8. 构建应用路由
     let app = build_app(
@@ -71,6 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         auth_service,
         scan_service,
         song_service,
+        library_service,
         config.clone(),
     );
 
@@ -91,11 +97,12 @@ fn build_app(
     auth_service: Arc<AuthService>,
     scan_service: Arc<ScanService>,
     song_service: Arc<SongService>,
+    library_service: Arc<LibraryService>,
     config: AppConfig,
 ) -> Router {
     // 创建共享状态
     let _auth_state = auth_service.clone();
-    
+
     let comm_state = CommState {
         pool: pool.clone(),
         song_service: song_service.clone(),
@@ -109,7 +116,7 @@ fn build_app(
     let stream_routes = handlers::stream::routes().with_state(pool.clone());
     let playlist_routes = handlers::playlist::routes().with_state(pool.clone());
     let user_routes = handlers::user::routes().with_state(pool.clone());
-    let library_routes = handlers::library::routes(pool.clone(), scan_service);
+    let library_routes = handlers::library::routes(pool.clone(), scan_service, library_service);
     let advanced_routes = handlers::advanced::routes().with_state(pool.clone());
 
     // 合并所有路由

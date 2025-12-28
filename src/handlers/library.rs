@@ -2,12 +2,11 @@
 #![allow(dead_code)]
 
 use crate::error::AppError;
-use crate::models::dto::{AlbumDto, ArtistDto, SongDto};
 use crate::models::response::{
     AlbumResponse, ArtistResponse, RatingResponse, ResponseContainer, Song,
     SubsonicResponse,
 };
-use crate::services::ScanService;
+use crate::services::{LibraryService, ScanService, StarItemType};
 use axum::{
     extract::Query,
     routing::{get, post},
@@ -100,11 +99,12 @@ pub struct ScanState {
     pub scanning: Arc<Mutex<bool>>,
 }
 
-/// 组合状态，用于 library 路由
+/// 组合状态,用于 library 路由
 #[derive(Clone)]
 pub struct LibraryState {
     pub pool: Arc<sqlx::SqlitePool>,
     pub scan_service: Arc<ScanService>,
+    pub library_service: Arc<LibraryService>,
     pub scan_state: ScanState,
 }
 
@@ -193,28 +193,11 @@ pub async fn scrobble(
         .unwrap_or_else(|| chrono::Utc::now().timestamp());
     let submission = params.submission.unwrap_or(true);
 
-    // 从认证信息中获取用户ID
-    let user_id = &claims.sub;
-
-    sqlx::query(
-        "INSERT INTO scrobbles (id, user_id, song_id, timestamp, submission, created_at)
-         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
-    )
-    .bind(uuid::Uuid::new_v4().to_string())
-    .bind(user_id)
-    .bind(&params.id)
-    .bind(timestamp)
-    .bind(submission)
-    .execute(&*state.pool)
-    .await?;
-
-    // 更新歌曲播放次数
-    if submission {
-        sqlx::query("UPDATE songs SET play_count = play_count + 1 WHERE id = ?")
-            .bind(&params.id)
-            .execute(&*state.pool)
-            .await?;
-    }
+    // 调用 Service 层 (带事务保护)
+    state
+        .library_service
+        .submit_scrobble(&claims.sub, &params.id, timestamp, submission)
+        .await?;
 
     Ok(Json(SubsonicResponse {
         response: ResponseContainer {
@@ -232,44 +215,26 @@ pub async fn star(
     axum::extract::State(state): axum::extract::State<LibraryState>,
     Query(params): Query<StarParams>,
 ) -> Result<Json<SubsonicResponse<()>>, AppError> {
-    let id = uuid::Uuid::new_v4().to_string();
     let user_id = &claims.sub;
 
-    if let Some(artist_id) = params.artist_id {
-        sqlx::query(
-            "INSERT OR IGNORE INTO starred (id, user_id, artist_id, created_at)
-             VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
-        )
-        .bind(&id)
-        .bind(user_id)
-        .bind(&artist_id)
-        .execute(&*state.pool)
-        .await?;
+    // 确定收藏类型和 ID
+    let (item_type, item_id) = if let Some(artist_id) = params.artist_id {
+        (StarItemType::Artist, artist_id)
     } else if let Some(album_id) = params.album_id {
-        sqlx::query(
-            "INSERT OR IGNORE INTO starred (id, user_id, album_id, created_at)
-             VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
-        )
-        .bind(&id)
-        .bind(user_id)
-        .bind(&album_id)
-        .execute(&*state.pool)
-        .await?;
+        (StarItemType::Album, album_id)
     } else if let Some(song_id) = params.song_id {
-        sqlx::query(
-            "INSERT OR IGNORE INTO starred (id, user_id, song_id, created_at)
-             VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
-        )
-        .bind(&id)
-        .bind(user_id)
-        .bind(&song_id)
-        .execute(&*state.pool)
-        .await?;
+        (StarItemType::Song, song_id)
     } else {
         return Err(AppError::missing_parameter(
             "id or artist_id/album_id/song_id",
         ));
-    }
+    };
+
+    // 调用 Service 层
+    state
+        .library_service
+        .star_item(user_id, item_type, &item_id)
+        .await?;
 
     Ok(Json(SubsonicResponse {
         response: ResponseContainer {
@@ -289,29 +254,24 @@ pub async fn unstar(
 ) -> Result<Json<SubsonicResponse<()>>, AppError> {
     let user_id = &claims.sub;
 
-    if let Some(artist_id) = params.artist_id {
-        sqlx::query("DELETE FROM starred WHERE user_id = ? AND artist_id = ?")
-            .bind(user_id)
-            .bind(&artist_id)
-            .execute(&*state.pool)
-            .await?;
+    // 确定收藏类型和 ID
+    let (item_type, item_id) = if let Some(artist_id) = params.artist_id {
+        (StarItemType::Artist, artist_id)
     } else if let Some(album_id) = params.album_id {
-        sqlx::query("DELETE FROM starred WHERE user_id = ? AND album_id = ?")
-            .bind(user_id)
-            .bind(&album_id)
-            .execute(&*state.pool)
-            .await?;
+        (StarItemType::Album, album_id)
     } else if let Some(song_id) = params.song_id {
-        sqlx::query("DELETE FROM starred WHERE user_id = ? AND song_id = ?")
-            .bind(user_id)
-            .bind(&song_id)
-            .execute(&*state.pool)
-            .await?;
+        (StarItemType::Song, song_id)
     } else {
         return Err(AppError::missing_parameter(
             "id or artist_id/album_id/song_id",
         ));
-    }
+    };
+
+    // 调用 Service 层
+    state
+        .library_service
+        .unstar_item(user_id, item_type, &item_id)
+        .await?;
 
     Ok(Json(SubsonicResponse {
         response: ResponseContainer {
@@ -329,24 +289,13 @@ pub async fn set_rating(
     axum::extract::State(state): axum::extract::State<LibraryState>,
     Query(params): Query<SetRatingParams>,
 ) -> Result<Json<SubsonicResponse<()>>, AppError> {
-    if params.rating < 1 || params.rating > 5 {
-        return Err(AppError::validation_error("Rating must be between 1 and 5"));
-    }
-
     let user_id = &claims.sub;
 
-    // 检查ID是艺术家、专辑还是歌曲
-    // 这里简化处理，假设是歌曲ID
-    sqlx::query(
-        "INSERT OR REPLACE INTO ratings (id, user_id, song_id, rating, created_at, updated_at)
-         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-    )
-    .bind(uuid::Uuid::new_v4().to_string())
-    .bind(user_id)
-    .bind(&params.id)
-    .bind(params.rating)
-    .execute(&*state.pool)
-    .await?;
+    // 调用 Service 层 (包含验证逻辑)
+    state
+        .library_service
+        .set_rating(user_id, &params.id, params.rating)
+        .await?;
 
     Ok(Json(SubsonicResponse {
         response: ResponseContainer {
@@ -366,44 +315,25 @@ pub async fn get_rating(
 ) -> Result<Json<SubsonicResponse<RatingResponse>>, AppError> {
     let user_id = &claims.sub;
 
-    let rating = sqlx::query_scalar::<_, i32>(
-        "SELECT rating FROM ratings WHERE user_id = ? AND song_id = ?",
-    )
-    .bind(user_id)
-    .bind(&params.id)
-    .fetch_optional(&*state.pool)
-    .await?;
+    // 调用 Service 层
+    let rating = state
+        .library_service
+        .get_rating(user_id, &params.id)
+        .await?;
 
-    if let Some(rating_value) = rating {
-        let result = RatingResponse {
-            id: params.id.clone(),
-            rating: rating_value,
-        };
+    let result = RatingResponse {
+        id: params.id.clone(),
+        rating: rating.unwrap_or(0),
+    };
 
-        Ok(Json(SubsonicResponse {
-            response: ResponseContainer {
-                status: "ok".to_string(),
-                version: "1.16.1".to_string(),
-                error: None,
-                data: Some(result),
-            },
-        }))
-    } else {
-        // 如果没有评分，返回默认评分0
-        let result = RatingResponse {
-            id: params.id.clone(),
-            rating: 0,
-        };
-
-        Ok(Json(SubsonicResponse {
-            response: ResponseContainer {
-                status: "ok".to_string(),
-                version: "1.16.1".to_string(),
-                error: None,
-                data: Some(result),
-            },
-        }))
-    }
+    Ok(Json(SubsonicResponse {
+        response: ResponseContainer {
+            status: "ok".to_string(),
+            version: "1.16.1".to_string(),
+            error: None,
+            data: Some(result),
+        },
+    }))
 }
 
 /// GET /rest/getStarred
@@ -414,73 +344,24 @@ pub async fn get_starred(
 ) -> Result<Json<SubsonicResponse<crate::models::response::StarredResponse>>, AppError> {
     let user_id = &claims.sub;
 
-    // 查询收藏的艺术家
-    let starred_artists = sqlx::query_as::<_, ArtistDto>(
-        "SELECT a.id, a.name, a.cover_art_path as cover_art, 0 as album_count
-         FROM starred s
-         JOIN artists a ON s.artist_id = a.id
-         WHERE s.user_id = ? AND s.artist_id IS NOT NULL",
-    )
-    .bind(user_id)
-    .fetch_all(&*state.pool)
-    .await?;
-
-    // 查询收藏的专辑
-    let starred_albums = sqlx::query_as::<_, AlbumDto>(
-        "SELECT
-            a.id,
-            a.name,
-            ar.name as artist,
-            ar.id as artist_id,
-            a.cover_art_path as cover_art,
-            a.song_count,
-            a.duration,
-            a.play_count,
-            a.year,
-            a.genre
-         FROM starred s
-         JOIN albums a ON s.album_id = a.id
-         JOIN artists ar ON a.artist_id = ar.id
-         WHERE s.user_id = ? AND s.album_id IS NOT NULL",
-    )
-    .bind(user_id)
-    .fetch_all(&*state.pool)
-    .await?;
-
-    // 查询收藏的歌曲
-    let starred_songs = sqlx::query_as::<_, SongDto>(
-        "SELECT
-            s.id,
-            s.title,
-            ar.name as artist,
-            al.name as album,
-            s.duration,
-            s.content_type
-         FROM starred st
-         JOIN songs s ON st.song_id = s.id
-         JOIN albums al ON s.album_id = al.id
-         JOIN artists ar ON s.artist_id = ar.id
-         WHERE st.user_id = ? AND st.song_id IS NOT NULL",
-    )
-    .bind(user_id)
-    .fetch_all(&*state.pool)
-    .await?;
+    // 调用 Service 层 (并行查询三个表)
+    let starred_items = state.library_service.get_starred_items(user_id).await?;
 
     let result = crate::models::response::StarredResponse {
-        artist: if starred_artists.is_empty() {
+        artist: if starred_items.artists.is_empty() {
             None
         } else {
-            Some(ArtistResponse::from_dtos(starred_artists))
+            Some(ArtistResponse::from_dtos(starred_items.artists))
         },
-        album: if starred_albums.is_empty() {
+        album: if starred_items.albums.is_empty() {
             None
         } else {
-            Some(AlbumResponse::from_dtos(starred_albums))
+            Some(AlbumResponse::from_dtos(starred_items.albums))
         },
-        song: if starred_songs.is_empty() {
+        song: if starred_items.songs.is_empty() {
             None
         } else {
-            Some(Song::from_dtos(starred_songs))
+            Some(Song::from_dtos(starred_items.songs))
         },
     };
 
@@ -494,7 +375,11 @@ pub async fn get_starred(
     }))
 }
 
-pub fn routes(pool: Arc<sqlx::SqlitePool>, scan_service: Arc<ScanService>) -> Router {
+pub fn routes(
+    pool: Arc<sqlx::SqlitePool>,
+    scan_service: Arc<ScanService>,
+    library_service: Arc<LibraryService>,
+) -> Router {
     let scan_state = ScanState {
         scanning: Arc::new(Mutex::new(false)),
     };
@@ -502,6 +387,7 @@ pub fn routes(pool: Arc<sqlx::SqlitePool>, scan_service: Arc<ScanService>) -> Ro
     let library_state = LibraryState {
         pool: pool.clone(),
         scan_service,
+        library_service,
         scan_state,
     };
 
