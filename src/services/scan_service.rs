@@ -28,6 +28,7 @@ pub struct ScanResult {
     pub albums: usize,
     pub songs: usize,
     pub failed: usize,
+    pub deleted: usize,
 }
 
 /// 音频元数据
@@ -94,6 +95,10 @@ impl ScanService {
                 }
             }
         }
+
+        // 清理已删除的文件
+        let deleted = self.cleanup_deleted_files().await?;
+        result.deleted = deleted;
 
         // 更新艺术家和专辑计数
         let artist_count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM artists")
@@ -830,6 +835,80 @@ impl ScanService {
 
         tracing::info!("Prewarmed cover cache: {} (300px)", cover_art_id);
         Ok(())
+    }
+
+    /// 清理数据库中文件已不存在的歌曲
+    async fn cleanup_deleted_files(&self) -> Result<usize, AppError> {
+        // 获取所有歌曲的文件路径
+        let all_songs = sqlx::query_as::<_, (String, String)>(
+            "SELECT id, file_path FROM songs"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut deleted_count = 0;
+        let mut deleted_song_ids = Vec::new();
+
+        for (song_id, file_path) in all_songs {
+            let path = Path::new(&file_path);
+            if !path.exists() {
+                tracing::debug!("发现已删除的文件: {}", file_path);
+                deleted_song_ids.push(song_id);
+                deleted_count += 1;
+            }
+        }
+
+        // 批量删除不存在的歌曲
+        if !deleted_song_ids.is_empty() {
+            for song_id in &deleted_song_ids {
+                sqlx::query("DELETE FROM songs WHERE id = ?")
+                    .bind(song_id)
+                    .execute(&self.pool)
+                    .await?;
+            }
+
+            tracing::info!("清理了 {} 个已删除的歌曲文件", deleted_count);
+
+            // 清理空专辑和空艺术家
+            self.cleanup_empty_albums().await?;
+            self.cleanup_empty_artists().await?;
+        }
+
+        Ok(deleted_count)
+    }
+
+    /// 清理没有歌曲的专辑
+    async fn cleanup_empty_albums(&self) -> Result<usize, AppError> {
+        let result = sqlx::query(
+            "DELETE FROM albums
+             WHERE id NOT IN (SELECT DISTINCT album_id FROM songs)"
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let deleted_count = result.rows_affected() as usize;
+        if deleted_count > 0 {
+            tracing::info!("清理了 {} 个空专辑", deleted_count);
+        }
+
+        Ok(deleted_count)
+    }
+
+    /// 清理没有专辑的艺术家
+    async fn cleanup_empty_artists(&self) -> Result<usize, AppError> {
+        let result = sqlx::query(
+            "DELETE FROM artists
+             WHERE id NOT IN (SELECT DISTINCT artist_id FROM albums)"
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let deleted_count = result.rows_affected() as usize;
+        if deleted_count > 0 {
+            tracing::info!("清理了 {} 个空艺术家", deleted_count);
+        }
+
+        Ok(deleted_count)
     }
 }
 
