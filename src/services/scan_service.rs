@@ -5,7 +5,7 @@ use crate::error::AppError;
 use crate::models::entities::{Album, Artist, Song};
 use crate::utils::{get_image_format, write_image_to_file};
 use sha2::{Digest, Sha256};
-use sqlx::SqlitePool;
+use sqlx::{Execute, SqlitePool};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use symphonia::core::formats::FormatOptions;
@@ -208,7 +208,7 @@ impl ScanService {
         }
 
         // 探测格式
-        let probed = symphonia::default::get_probe()
+        let mut probed = symphonia::default::get_probe()
             .format(
                 &hint,
                 mss,
@@ -247,73 +247,85 @@ impl ScanService {
         // 可以通过 (文件大小 * 8) / 时长 来估算
 
         // 读取标签元数据
-        if let Some(metadata_rev) = format.metadata().current() {
-            for tag in metadata_rev.tags() {
-                match tag.std_key {
-                    Some(StandardTagKey::TrackTitle) => {
-                        metadata.title = Some(tag.value.to_string());
-                    }
-                    Some(StandardTagKey::Artist) => {
-                        metadata.artist = Some(tag.value.to_string());
-                    }
-                    Some(StandardTagKey::Album) => {
-                        metadata.album = Some(tag.value.to_string());
-                    }
-                    Some(StandardTagKey::AlbumArtist) => {
-                        metadata.album_artist = Some(tag.value.to_string());
-                    }
-                    Some(StandardTagKey::Genre) => {
-                        metadata.genre = Some(tag.value.to_string());
-                    }
-                    Some(StandardTagKey::Date) | Some(StandardTagKey::ReleaseDate) => {
-                        // 尝试解析年份
-                        if let Ok(year) = tag.value.to_string().parse::<i32>() {
-                            metadata.year = Some(year);
-                        } else {
-                            // 尝试从日期字符串提取年份 (如 "2024-01-01")
-                            if let Some(year_str) = tag.value.to_string().split('-').next() {
-                                if let Ok(year) = year_str.parse::<i32>() {
-                                    metadata.year = Some(year);
+        let meta = if format.metadata().current().is_some() {
+            Some(format.metadata())
+        } else {
+            if probed.metadata.get().is_some() {
+                Some(probed.metadata.get().unwrap())
+            } else {
+                None
+            }
+        };
+
+        if let Some(meta) = meta {
+            if let Some(metadata_rev) = meta.current() {
+                for tag in metadata_rev.tags() {
+                    match tag.std_key {
+                        Some(StandardTagKey::TrackTitle) => {
+                            metadata.title = Some(tag.value.to_string());
+                        }
+                        Some(StandardTagKey::Artist) => {
+                            metadata.artist = Some(tag.value.to_string());
+                        }
+                        Some(StandardTagKey::Album) => {
+                            metadata.album = Some(tag.value.to_string());
+                        }
+                        Some(StandardTagKey::AlbumArtist) => {
+                            metadata.album_artist = Some(tag.value.to_string());
+                        }
+                        Some(StandardTagKey::Genre) => {
+                            metadata.genre = Some(tag.value.to_string());
+                        }
+                        Some(StandardTagKey::Date) | Some(StandardTagKey::ReleaseDate) => {
+                            // 尝试解析年份
+                            if let Ok(year) = tag.value.to_string().parse::<i32>() {
+                                metadata.year = Some(year);
+                            } else {
+                                // 尝试从日期字符串提取年份 (如 "2024-01-01")
+                                if let Some(year_str) = tag.value.to_string().split('-').next() {
+                                    if let Ok(year) = year_str.parse::<i32>() {
+                                        metadata.year = Some(year);
+                                    }
                                 }
                             }
                         }
-                    }
-                    Some(StandardTagKey::TrackNumber) => {
-                        // 处理 "1/12" 格式
-                        let track_str = tag.value.to_string();
-                        if let Some(track_num) = track_str.split('/').next() {
-                            if let Ok(num) = track_num.parse::<i32>() {
-                                metadata.track_number = Some(num);
+                        Some(StandardTagKey::TrackNumber) => {
+                            // 处理 "1/12" 格式
+                            let track_str = tag.value.to_string();
+                            if let Some(track_num) = track_str.split('/').next() {
+                                if let Ok(num) = track_num.parse::<i32>() {
+                                    metadata.track_number = Some(num);
+                                }
                             }
                         }
-                    }
-                    Some(StandardTagKey::DiscNumber) => {
-                        // 处理 "1/2" 格式
-                        let disc_str = tag.value.to_string();
-                        if let Some(disc_num) = disc_str.split('/').next() {
-                            if let Ok(num) = disc_num.parse::<i32>() {
-                                metadata.disc_number = Some(num);
+                        Some(StandardTagKey::DiscNumber) => {
+                            // 处理 "1/2" 格式
+                            let disc_str = tag.value.to_string();
+                            if let Some(disc_num) = disc_str.split('/').next() {
+                                if let Ok(num) = disc_num.parse::<i32>() {
+                                    metadata.disc_number = Some(num);
+                                }
                             }
                         }
+                        Some(StandardTagKey::Lyrics) => {
+                            metadata.lyrics = Some(tag.value.to_string());
+                        }
+                        _ => {}
                     }
-                    Some(StandardTagKey::Lyrics) => {
-                        metadata.lyrics = Some(tag.value.to_string());
-                    }
-                    _ => {}
                 }
+
+                // 处理图片元数据
+                let album = metadata_rev
+                    .visuals()
+                    .iter()
+                    .map(|f| (f.media_type.clone(), f.data.clone()))
+                    .collect::<Vec<_>>();
+
+                // println!("metadata_rev: {:?}", album.len());
+                album.iter().for_each(|f| {
+                    metadata.cover_art_raw = Some((f.0.to_string(), f.1.clone()));
+                });
             }
-
-            // 处理图片元数据
-            let album = metadata_rev
-                .visuals()
-                .iter()
-                .map(|f| (f.media_type.clone(), f.data.clone()))
-                .collect::<Vec<_>>();
-
-            // println!("metadata_rev: {:?}", album.len());
-            album.iter().for_each(|f| {
-                metadata.cover_art_raw = Some((f.0.to_string(), f.1.clone()));
-            });
         }
 
         Ok(metadata)
@@ -455,7 +467,14 @@ impl ScanService {
         .fetch_optional(&self.pool)
         .await?;
 
-        if let Some((album_id, existing_year, existing_genre, existing_cover_path, existing_cover_hash)) = existing {
+        if let Some((
+            album_id,
+            existing_year,
+            existing_genre,
+            existing_cover_path,
+            existing_cover_hash,
+        )) = existing
+        {
             // 专辑已存在，进行智能更新
             self.update_album_if_needed(
                 &album_id,
@@ -466,12 +485,14 @@ impl ScanService {
                 existing_cover_path,
                 existing_cover_hash,
                 cover_art_raw,
-            ).await?;
+            )
+            .await?;
             return Ok(album_id);
         }
 
         // 专辑不存在，创建新专辑
-        self.create_new_album(artist_id, name, year, genre, cover_art_raw).await
+        self.create_new_album(artist_id, name, year, genre, cover_art_raw)
+            .await
     }
 
     /// 获取或创建歌曲
@@ -517,7 +538,7 @@ impl ScanService {
 
         if existing.is_some() {
             // 歌曲已存在，进行更新
-            sqlx::query(
+            let query = sqlx::query(
                 "UPDATE songs
                  SET title = ?,
                      track_number = ?,
@@ -529,23 +550,26 @@ impl ScanService {
                      content_type = ?,
                      file_size = ?,
                      lyrics = ?,
-                     updated_at = CURRENT_TIMESTAMP
+                     updated_at = ?
                  WHERE file_path = ?",
             )
             .bind(&song.title)
-            .bind(&song.track_number)
-            .bind(&song.disc_number)
-            .bind(&song.duration)
-            .bind(&song.bit_rate)
-            .bind(&song.genre)
-            .bind(&song.year)
-            .bind(&song.content_type)
-            .bind(&song.file_size)
-            .bind(&song.lyrics)
+            .bind(song.track_number.unwrap_or_default())
+            .bind(song.disc_number.unwrap_or_default())
+            .bind(song.duration)
+            .bind(song.bit_rate.unwrap_or_default())
+            .bind(song.genre.clone().unwrap_or_default())
+            .bind(song.year.unwrap_or_default())
+            .bind(song.content_type.clone().unwrap_or_default())
+            .bind(song.file_size.unwrap_or_default())
+            .bind(song.lyrics.clone().unwrap_or_default())
             .bind(song.updated_at)
-            .bind(path_to_string(path))
-            .execute(&self.pool)
-            .await?;
+            .bind(path_to_string(path));
+            
+            let result = query.execute(&self.pool).await?;
+            if result.rows_affected() == 0 {
+                tracing::info!("歌曲无更新结果 [{:?}] file_path: {}", result, path_to_string(path));
+            }
 
             // 更新歌曲后也需要更新专辑统计信息（可能时长变化了）
             self.update_album_stats(album_id).await?;
@@ -741,16 +765,12 @@ impl ScanService {
         } else {
             tracing::debug!("专辑信息无变化，跳过更新 [album_id={}]", album_id);
         }
-        
+
         Ok(())
     }
 
     /// 处理封面图片：保存原图 + 预热缓存
-    async fn process_cover_art(
-        &self,
-        mime_type: &str,
-        data: &[u8],
-    ) -> Result<String, AppError> {
+    async fn process_cover_art(&self, mime_type: &str, data: &[u8]) -> Result<String, AppError> {
         let format = get_image_format(mime_type);
         let cover_art_id = format!("al-{}", Uuid::new_v4().to_string()[0..8].to_string());
 
@@ -765,7 +785,10 @@ impl ScanService {
         write_image_to_file(data, &original_file_path)?;
 
         // 预生成 300px WebP 缓存
-        if let Err(e) = self.prewarm_cover_cache(&cover_art_id, &original_file_path).await {
+        if let Err(e) = self
+            .prewarm_cover_cache(&cover_art_id, &original_file_path)
+            .await
+        {
             tracing::warn!("预热封面缓存失败 [cover_id={}]: {}", cover_art_id, e);
         }
 
@@ -786,8 +809,7 @@ impl ScanService {
             std::fs::create_dir_all(&webp_dir)?;
         }
 
-        let cache_path =
-            crate::utils::image_utils::get_webp_cache_path(cover_art_id, DEFAULT_SIZE);
+        let cache_path = crate::utils::image_utils::get_webp_cache_path(cover_art_id, DEFAULT_SIZE);
 
         let original_path = original_path.to_string();
         let cache_path_clone = cache_path.clone();
@@ -803,10 +825,7 @@ impl ScanService {
         })
         .await
         .map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Task join error: {}", e),
-            )
+            std::io::Error::new(std::io::ErrorKind::Other, format!("Task join error: {}", e))
         })??;
 
         tracing::info!("Prewarmed cover cache: {} (300px)", cover_art_id);
@@ -839,7 +858,7 @@ mod tests {
     #[tokio::test]
     async fn test_read_custom_audio() {
         let test_file = std::env::var("TEST_AUDIO_FILE")
-            .unwrap_or_else(|_| "./music/阿杜 - 他一定很爱你.flac".to_string());
+            .unwrap_or_else(|_| "./music/Evanescence - Bring Me To Life.mp3".to_string());
 
         if test_file.is_empty() {
             return;
@@ -875,6 +894,15 @@ mod tests {
                 println!("声道数: {:?}", metadata.channels);
                 println!("内容类型: {}", metadata.content_type);
                 println!("文件大小: {:?} bytes", metadata.file_size);
+
+                if let Some(lyrics) = metadata.lyrics {
+                    println!("歌词大小: {}", lyrics.len())
+                }
+
+                if let Some((mime, data)) = metadata.cover_art_raw {
+                    println!("封面: {} ({} bytes)", mime, data.len());
+                }
+
                 println!("=====================================\n");
             }
             Err(e) => {
