@@ -304,12 +304,12 @@ impl LibraryService {
     /// # 返回值
     ///
     /// 返回数据库中歌曲表的总记录数
-    pub async fn get_song_count(&self) -> Result<i32, AppError> {
+    pub async fn get_song_count(&self) -> Result<usize, AppError> {
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM songs")
             .fetch_one(&self.ctx.pool)
-            .await? as i32;
+            .await?;
 
-        Ok(count)
+        Ok(count as usize)
     }
 }
 
