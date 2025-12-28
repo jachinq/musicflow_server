@@ -3,15 +3,24 @@
 
 use axum::body::Body;
 use axum::{extract::Query, http::HeaderMap, response::IntoResponse, routing::get, Json, Router};
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use sqlx::SqlitePool;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs::File;
+use tokio::sync::Mutex;
 use tokio_util::io::ReaderStream;
 
 use crate::error::AppError;
 use crate::models::response::{Lyrics, LyricsResponse, SubsonicResponse};
+
+// 防止同一封面同一尺寸被多次生成
+// Key: "{cover_art_id}_{size}"
+static CACHE_GENERATION_LOCKS: Lazy<Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+
 
 /// 流媒体参数
 #[derive(Debug, Deserialize)]
@@ -51,13 +60,6 @@ pub struct DownloadParams {
 pub struct CoverArtParams {
     pub id: String,
     pub size: Option<i32>,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// GET /rest/stream - 流式播放音乐
@@ -169,24 +171,68 @@ pub async fn get_cover_art(
     // axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
     Query(params): Query<CoverArtParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    // // 检查封面艺术权限
-    // let permissions = crate::middleware::auth_middleware::get_user_permissions(&pool, &claims.sub)
-    //     .await
-    //     .map_err(|_| AppError::access_denied("Failed to check permissions"))?;
+    let cover_art_id = &params.id;
+    let size = params.size.unwrap_or(300).max(50).min(2000) as u32;
 
-    // if !permissions.can_access_cover_art() {
-    //     return Err(AppError::access_denied("Cover art permission required"));
-    // }
-
-    let file_path = format!("./coverArt/{}.jpg", params.id);
-    let file_path = PathBuf::from(&file_path);
-    if file_path.exists() {
-        return serve_image_file(file_path).await;
+    // 1. 检查缓存
+    let cache_path = crate::utils::image_utils::get_webp_cache_path(cover_art_id, size);
+    if cache_path.exists() {
+        return serve_image_file(cache_path).await;
     }
 
-    // 如果没有找到封面，返回默认封面或 404
-    // 这里可以返回一个默认的占位图
-    Err(AppError::not_found("Cover art"))
+    // 2. 查找原图
+    let original_path = crate::utils::image_utils::get_original_image_path(cover_art_id)
+        .ok_or_else(|| AppError::not_found("Cover art original image"))?;
+
+    // 3. 获取生成锁
+    let lock_key = format!("{}_{}", cover_art_id, size);
+    let generation_lock = {
+        let mut locks = CACHE_GENERATION_LOCKS.lock().await;
+        locks
+            .entry(lock_key.clone())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    };
+
+    let _guard = generation_lock.lock().await;
+
+    // 4. 双重检查缓存
+    if cache_path.exists() {
+        return serve_image_file(cache_path).await;
+    }
+
+    // 5. 创建缓存目录
+    let webp_dir = PathBuf::from("./coverArt/webp");
+    if !webp_dir.exists() {
+        std::fs::create_dir_all(&webp_dir).map_err(|e| AppError::IoError(e))?;
+    }
+
+    // 6. 生成 WebP 缓存（spawn_blocking 避免阻塞）
+    let original_path_clone = original_path.clone();
+    let cache_path_clone = cache_path.clone();
+    tokio::task::spawn_blocking(move || {
+        let config = crate::utils::image_utils::WebPConfig::default();
+        crate::utils::image_utils::resize_and_convert_to_webp(
+            &original_path_clone,
+            &cache_path_clone,
+            size,
+            &config,
+        )
+    })
+    .await
+    .map_err(|e| {
+        AppError::IoError(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Task join error: {}", e),
+        ))
+    })?
+    .map_err(|e| {
+        tracing::error!("Failed to generate WebP cache: {}", e);
+        AppError::IoError(e)
+    })?;
+
+    // 7. 返回生成的缓存
+    serve_image_file(cache_path).await
 }
 
 /// 服务图片文件

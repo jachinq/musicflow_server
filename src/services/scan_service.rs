@@ -471,10 +471,22 @@ impl ScanService {
         // 写入专辑封面
         if let Some((mime_type, data)) = cover_art_raw {
             let format = get_image_format(&mime_type);
+            let cover_art = format!("al-{}", Uuid::new_v4().to_string()[0..8].to_string());
 
-            let cover_art = format!("al-{}", Uuid::new_v4().to_string()[0..12].to_string());
-            let file_path = format!("{}/{}.{}", "./coverArt", cover_art, format);
-            write_image_to_file(&data, &file_path)?;
+            // 创建 originals 目录
+            let original_dir = PathBuf::from("./coverArt/originals");
+            if !original_dir.exists() {
+                std::fs::create_dir_all(&original_dir)?;
+            }
+
+            let original_file_path = format!("./coverArt/originals/{}.{}", cover_art, format);
+            write_image_to_file(&data, &original_file_path)?;
+
+            // 预生成 300px WebP 缓存
+            if let Err(e) = self.prewarm_cover_cache(&cover_art, &original_file_path).await {
+                tracing::warn!("Failed to prewarm cover cache for {}: {}", cover_art, e);
+            }
+
             album.cover_art_path = Some(cover_art);
         }
 
@@ -610,6 +622,47 @@ impl ScanService {
         .execute(&self.pool)
         .await?;
 
+        Ok(())
+    }
+
+    /// 预热封面缓存
+    async fn prewarm_cover_cache(
+        &self,
+        cover_art_id: &str,
+        original_path: &str,
+    ) -> Result<(), std::io::Error> {
+        const DEFAULT_SIZE: u32 = 300;
+        const CACHE_PATH: &str = "./coverArt/webp";
+
+        let webp_dir = PathBuf::from(CACHE_PATH);
+        if !webp_dir.exists() {
+            std::fs::create_dir_all(&webp_dir)?;
+        }
+
+        let cache_path =
+            crate::utils::image_utils::get_webp_cache_path(cover_art_id, DEFAULT_SIZE);
+
+        let original_path = original_path.to_string();
+        let cache_path_clone = cache_path.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let config = crate::utils::image_utils::WebPConfig::default();
+            crate::utils::image_utils::resize_and_convert_to_webp(
+                Path::new(&original_path),
+                &cache_path_clone,
+                DEFAULT_SIZE,
+                &config,
+            )
+        })
+        .await
+        .map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Task join error: {}", e),
+            )
+        })??;
+
+        tracing::info!("Prewarmed cover cache: {} (300px)", cover_art_id);
         Ok(())
     }
 }
