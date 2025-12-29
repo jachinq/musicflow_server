@@ -58,16 +58,20 @@ impl ScanService {
         Self { pool, library_path }
     }
 
-    /// 扫描音乐库
+    /// 扫描音乐库 (优化版: 并发处理 + 批量插入 + 增量扫描)
     pub async fn scan_library(&self, scan_state: ScanState) -> Result<ScanResult, AppError> {
+        use futures::stream::{self, StreamExt};
+
         let mut result = ScanResult::default();
 
         if !self.library_path.exists() {
             return Err(AppError::not_found("Music library path"));
         }
 
+        let scan_start = std::time::Instant::now();
         tracing::info!("开始扫描音乐库: {:?}", self.library_path);
 
+        // 步骤1: 收集所有音频文件路径
         let mut paths = vec![];
         for entry in WalkDir::new(&self.library_path)
             .into_iter()
@@ -89,30 +93,189 @@ impl ScanService {
             }
         }
 
+        let total_files = paths.len();
         let mut count = scan_state.count.lock().await;
-        *count = paths.len();
+        *count = total_files;
+        drop(count); // 释放锁
 
+        tracing::info!("发现 {} 个音频文件", total_files);
+
+        // 步骤1.5: 增量扫描优化 - 查询数据库中已存在的文件及其更新时间
+        let db_files = self.get_existing_files_info().await?;
+        tracing::info!("数据库中已有 {} 个文件记录", db_files.len());
+
+        // 过滤需要扫描的文件(新增或修改的文件)
+        let mut files_to_scan = Vec::new();
+        let mut skipped = 0;
 
         for path in paths {
-            match self.process_audio_file(path.as_path()).await {
-                Ok(_) => {
-                    result.songs += 1;
-                }
-                Err(e) => {
-                    tracing::warn!("处理文件失败 {}: {}", path.display(), e);
-                    result.failed += 1;
-                }
-            }   
+            let path_str = path_to_string(&path);
 
-            let mut current = scan_state.current.lock().await;
-            *current += 1;
+            // 获取文件修改时间
+            let file_mtime = match std::fs::metadata(&path) {
+                Ok(metadata) => match metadata.modified() {
+                    Ok(time) => Some(time),
+                    Err(_) => None,
+                },
+                Err(_) => None,
+            };
+
+            // 检查是否需要扫描
+            let should_scan = match db_files.get(&path_str) {
+                Some(db_updated_at) => {
+                    // 文件存在于数据库,比较修改时间
+                    if let Some(mtime) = file_mtime {
+                        // 将数据库时间字符串转换为系统时间
+                        match chrono::DateTime::parse_from_rfc3339(db_updated_at) {
+                            Ok(db_time) => {
+                                let file_time = chrono::DateTime::<chrono::Utc>::from(mtime);
+                                // 如果文件修改时间晚于数据库更新时间,需要重新扫描
+                                file_time > db_time
+                            }
+                            Err(_) => true, // 解析失败,重新扫描
+                        }
+                    } else {
+                        true // 无法获取文件时间,重新扫描
+                    }
+                }
+                None => true, // 新文件,需要扫描
+            };
+
+            if should_scan {
+                files_to_scan.push(path);
+            } else {
+                skipped += 1;
+            }
         }
 
-        // 清理已删除的文件
+        tracing::info!(
+            "增量扫描: 需处理 {} 个文件, 跳过 {} 个未修改文件 (节省 {:.1}%)",
+            files_to_scan.len(),
+            skipped,
+            (skipped as f64 / total_files as f64) * 100.0
+        );
+
+        // 更新总数为实际需要处理的文件数
+        let mut count = scan_state.count.lock().await;
+        *count = files_to_scan.len();
+        drop(count);
+
+        if files_to_scan.is_empty() {
+            tracing::info!("所有文件都是最新的,无需扫描");
+
+            // 仍然需要清理已删除的文件
+            let deleted = self.cleanup_deleted_files().await?;
+            result.deleted = deleted;
+
+            // 更新统计
+            let artist_count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM artists")
+                .fetch_one(&self.pool)
+                .await? as usize;
+            let album_count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM albums")
+                .fetch_one(&self.pool)
+                .await? as usize;
+            let song_count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM songs")
+                .fetch_one(&self.pool)
+                .await? as usize;
+
+            result.artists = artist_count;
+            result.albums = album_count;
+            result.songs = song_count;
+
+            return Ok(result);
+        }
+
+        tracing::info!("开始并发处理 {} 个文件", files_to_scan.len());
+
+        // 步骤2: 并发解析元数据 (CPU密集型任务)
+        const CONCURRENT_PARSE: usize = 8; // 并发解析数量
+        const BATCH_SIZE: usize = 100; // 批量插入大小
+
+        let mut metadata_stream = stream::iter(files_to_scan.into_iter().enumerate())
+            .map(|(index, path)| {
+                async move {
+                    let path_clone = path.clone();
+                    // 在阻塞线程池中解析元数据(CPU密集型)
+                    let result = tokio::task::spawn_blocking(move || {
+                        Self::extract_audio_metadata_static(&path_clone)
+                    })
+                    .await;
+
+                    match result {
+                        Ok(Ok(metadata)) => Ok((index, path, metadata)),
+                        Ok(Err(e)) => Err((index, path.clone(), e)),
+                        Err(e) => Err((index, path.clone(), AppError::ValidationError(format!("解析任务失败: {}", e)))),
+                    }
+                }
+            })
+            .buffer_unordered(CONCURRENT_PARSE);
+
+        // 步骤3: 批量收集并插入数据库
+        let mut batch = Vec::with_capacity(BATCH_SIZE);
+        let mut processed = 0;
+
+        while let Some(parse_result) = metadata_stream.next().await {
+            processed += 1;
+
+            match parse_result {
+                Ok((_index, path, metadata)) => {
+                    batch.push((path, metadata));
+
+                    // 批量插入
+                    if batch.len() >= BATCH_SIZE {
+                        let batch_result = self.batch_save_to_database(&batch).await;
+                        match batch_result {
+                            Ok(count) => result.songs += count,
+                            Err(e) => {
+                                tracing::error!("批量插入失败: {}", e);
+                                result.failed += batch.len();
+                            }
+                        }
+                        batch.clear();
+                    }
+                }
+                Err((index, path, e)) => {
+                    tracing::warn!("[{}/{}] 解析失败 {}: {}", index + 1, total_files, path.display(), e);
+                    result.failed += 1;
+                }
+            }
+
+            // 更新进度 (每10个文件更新一次,减少锁竞争)
+            if processed % 10 == 0 || processed == total_files {
+                let mut current = scan_state.current.lock().await;
+                *current = processed;
+
+                // 每100个文件输出一次进度日志
+                if processed % 100 == 0 || processed == total_files {
+                    let elapsed = scan_start.elapsed().as_secs_f64();
+                    let speed = processed as f64 / elapsed;
+                    tracing::info!(
+                        "进度: {}/{} ({:.1}%) - 速度: {:.1} 文件/秒",
+                        processed,
+                        total_files,
+                        (processed as f64 / total_files as f64) * 100.0,
+                        speed
+                    );
+                }
+            }
+        }
+
+        // 步骤4: 处理剩余批次
+        if !batch.is_empty() {
+            match self.batch_save_to_database(&batch).await {
+                Ok(count) => result.songs += count,
+                Err(e) => {
+                    tracing::error!("最后批次插入失败: {}", e);
+                    result.failed += batch.len();
+                }
+            }
+        }
+
+        // 步骤5: 清理已删除的文件
         let deleted = self.cleanup_deleted_files().await?;
         result.deleted = deleted;
 
-        // 更新艺术家和专辑计数
+        // 步骤6: 更新艺术家和专辑计数
         let artist_count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM artists")
             .fetch_one(&self.pool)
             .await? as usize;
@@ -123,11 +286,518 @@ impl ScanService {
         result.artists = artist_count;
         result.albums = album_count;
 
-        tracing::info!("音乐库扫描完成: {:?}", result);
+        let total_time = scan_start.elapsed();
+        let avg_speed = total_files as f64 / total_time.as_secs_f64();
+
+        tracing::info!(
+            "扫描完成: {:?} | 总耗时: {:.2}s | 平均速度: {:.1} 文件/秒",
+            result,
+            total_time.as_secs_f64(),
+            avg_speed
+        );
+
         Ok(result)
     }
 
-    /// 处理单个音频文件
+    /// 静态方法:提取音频元数据(无需实例)
+    fn extract_audio_metadata_static(path: &Path) -> Result<AudioMetadata, AppError> {
+        // 打开文件
+        let file = File::open(path)
+            .map_err(|e| AppError::ValidationError(format!("无法打开文件: {}", e)))?;
+
+        // 创建媒体源
+        let mss = MediaSourceStream::new(Box::new(file), Default::default());
+
+        // 创建格式提示
+        let mut hint = Hint::new();
+        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+            hint.with_extension(ext);
+        }
+
+        // 探测格式
+        let mut probed = symphonia::default::get_probe()
+            .format(
+                &hint,
+                mss,
+                &FormatOptions::default(),
+                &MetadataOptions::default(),
+            )
+            .map_err(|e| AppError::ValidationError(format!("无法探测音频格式: {}", e)))?;
+
+        let mut format = probed.format;
+        let track = format
+            .default_track()
+            .ok_or_else(|| AppError::ValidationError("没有找到音频轨道".to_string()))?;
+
+        let mut metadata = AudioMetadata::default();
+
+        // 获取时长信息
+        if let Some(time_base) = track.codec_params.time_base {
+            if let Some(n_frames) = track.codec_params.n_frames {
+                let duration = time_base.calc_time(n_frames);
+                metadata.duration_secs = duration.seconds;
+            }
+        }
+
+        // 获取采样率
+        if let Some(sample_rate) = track.codec_params.sample_rate {
+            metadata.sample_rate = Some(sample_rate as i32);
+        }
+
+        // 获取声道数
+        if let Some(channels) = track.codec_params.channels {
+            metadata.channels = Some(channels.count() as u8);
+        }
+
+        // 读取标签元数据
+        let meta = if format.metadata().current().is_some() {
+            Some(format.metadata())
+        } else {
+            if probed.metadata.get().is_some() {
+                Some(probed.metadata.get().unwrap())
+            } else {
+                None
+            }
+        };
+
+        if let Some(meta) = meta {
+            if let Some(metadata_rev) = meta.current() {
+                for tag in metadata_rev.tags() {
+                    match tag.std_key {
+                        Some(StandardTagKey::TrackTitle) => {
+                            metadata.title = Some(tag.value.to_string());
+                        }
+                        Some(StandardTagKey::Artist) => {
+                            metadata.artist = Some(tag.value.to_string());
+                        }
+                        Some(StandardTagKey::Album) => {
+                            metadata.album = Some(tag.value.to_string());
+                        }
+                        Some(StandardTagKey::AlbumArtist) => {
+                            metadata.album_artist = Some(tag.value.to_string());
+                        }
+                        Some(StandardTagKey::Genre) => {
+                            metadata.genre = Some(tag.value.to_string());
+                        }
+                        Some(StandardTagKey::Date) | Some(StandardTagKey::ReleaseDate) => {
+                            if let Ok(year) = tag.value.to_string().parse::<i32>() {
+                                metadata.year = Some(year);
+                            } else {
+                                if let Some(year_str) = tag.value.to_string().split('-').next() {
+                                    if let Ok(year) = year_str.parse::<i32>() {
+                                        metadata.year = Some(year);
+                                    }
+                                }
+                            }
+                        }
+                        Some(StandardTagKey::TrackNumber) => {
+                            let track_str = tag.value.to_string();
+                            if let Some(track_num) = track_str.split('/').next() {
+                                if let Ok(num) = track_num.parse::<i32>() {
+                                    metadata.track_number = Some(num);
+                                }
+                            }
+                        }
+                        Some(StandardTagKey::DiscNumber) => {
+                            let disc_str = tag.value.to_string();
+                            if let Some(disc_num) = disc_str.split('/').next() {
+                                if let Ok(num) = disc_num.parse::<i32>() {
+                                    metadata.disc_number = Some(num);
+                                }
+                            }
+                        }
+                        Some(StandardTagKey::Lyrics) => {
+                            metadata.lyrics = Some(tag.value.to_string());
+                        }
+                        _ => {}
+                    }
+                }
+
+                // 处理图片元数据
+                let album = metadata_rev
+                    .visuals()
+                    .iter()
+                    .map(|f| (f.media_type.clone(), f.data.clone()))
+                    .collect::<Vec<_>>();
+
+                album.iter().for_each(|f| {
+                    metadata.cover_art_raw = Some((f.0.to_string(), f.1.clone()));
+                });
+            }
+        }
+
+        Ok(metadata)
+    }
+
+    /// 获取数据库中已存在文件的路径和更新时间映射
+    async fn get_existing_files_info(&self) -> Result<std::collections::HashMap<String, String>, AppError> {
+        use std::collections::HashMap;
+
+        let rows = sqlx::query_as::<_, (String, String)>(
+            "SELECT file_path, updated_at FROM songs"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut map = HashMap::with_capacity(rows.len());
+        for (path, updated_at) in rows {
+            map.insert(path, updated_at);
+        }
+
+        Ok(map)
+    }
+
+    /// 批量保存到数据库 (优化版: 减少数据库往返 + 封面异步处理)
+    async fn batch_save_to_database(
+        &self,
+        batch: &[(PathBuf, AudioMetadata)],
+    ) -> Result<usize, AppError> {
+        if batch.is_empty() {
+            return Ok(0);
+        }
+
+        // 收集需要处理的封面(延迟到事务外处理)
+        let mut pending_covers: Vec<(String, String, Box<[u8]>)> = Vec::new();
+
+        // 使用事务批量处理
+        let mut tx = self.pool.begin().await?;
+        let mut success_count = 0;
+
+        for (path, metadata) in batch {
+            let artist_name_fallback = self.extract_artist_from_path(path);
+            let album_name_fallback = self.extract_album_from_path(path);
+
+            let artist_name = metadata
+                .artist
+                .as_deref()
+                .unwrap_or(&artist_name_fallback);
+            let album_name = metadata
+                .album
+                .as_deref()
+                .unwrap_or(&album_name_fallback);
+            let title = metadata
+                .title
+                .as_deref()
+                .unwrap_or("Unknown");
+
+            // 使用事务内的连接进行插入(不处理封面)
+            let result = self
+                .save_to_database_tx_deferred_cover(
+                    &mut tx,
+                    &mut pending_covers,
+                    artist_name,
+                    album_name,
+                    title,
+                    path,
+                    metadata.duration_secs as i32,
+                    metadata.bit_rate,
+                    metadata.year,
+                    metadata.genre.as_deref(),
+                    metadata.track_number,
+                    metadata.disc_number,
+                    &metadata.content_type,
+                    metadata.file_size,
+                    metadata.cover_art_raw.clone(),
+                    metadata.lyrics.as_deref(),
+                )
+                .await;
+
+            match result {
+                Ok(_) => success_count += 1,
+                Err(e) => {
+                    tracing::warn!("保存失败 {}: {}", path.display(), e);
+                }
+            }
+        }
+
+        // 提交事务
+        tx.commit().await?;
+
+        // 事务提交后,并发处理封面
+        if !pending_covers.is_empty() {
+            tracing::info!("开始并发处理 {} 个封面", pending_covers.len());
+            self.process_covers_concurrently(pending_covers).await;
+        }
+
+        Ok(success_count)
+    }
+
+    /// 并发处理多个封面
+    async fn process_covers_concurrently(&self, covers: Vec<(String, String, Box<[u8]>)>) {
+        use futures::stream::{self, StreamExt};
+
+        const CONCURRENT_COVERS: usize = 4;
+
+        let _results: Vec<_> = stream::iter(covers)
+            .map(|(album_id, mime_type, data)| async move {
+                match self.process_cover_art_for_album(&album_id, &mime_type, &data).await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!("处理封面失败 [album_id={}]: {}", album_id, e);
+                    }
+                }
+            })
+            .buffer_unordered(CONCURRENT_COVERS)
+            .collect()
+            .await;
+    }
+
+    /// 为指定专辑处理封面
+    async fn process_cover_art_for_album(
+        &self,
+        album_id: &str,
+        mime_type: &str,
+        data: &[u8],
+    ) -> Result<(), AppError> {
+        let cover_art_id = format!("al-{}", &album_id[0..8]);
+        let format = get_image_format(mime_type).to_string(); // 转换为拥有的String
+
+        // 在阻塞线程池中执行文件I/O
+        let data_clone = data.to_vec();
+        let format_clone = format.clone();
+        let cover_art_id_clone = cover_art_id.clone();
+
+        tokio::task::spawn_blocking(move || {
+            // 创建 originals 目录
+            let original_dir = PathBuf::from("./coverArt/originals");
+            if !original_dir.exists() {
+                std::fs::create_dir_all(&original_dir)?;
+            }
+
+            // 保存原始图片
+            let original_file_path =
+                format!("./coverArt/originals/{}.{}", cover_art_id_clone, format_clone);
+            write_image_to_file(&data_clone, &original_file_path)?;
+
+            Ok::<String, std::io::Error>(original_file_path)
+        })
+        .await
+        .map_err(|e| AppError::ValidationError(format!("封面保存任务失败: {}", e)))??;
+
+        // 异步预热缓存(不等待完成)
+        let cover_art_id_clone = cover_art_id.clone();
+        let original_file_path = format!("./coverArt/originals/{}.{}", cover_art_id, format);
+        tokio::spawn(async move {
+            if let Err(e) = Self::prewarm_cover_cache_static(&cover_art_id_clone, &original_file_path).await {
+                tracing::warn!("预热封面缓存失败 [cover_id={}]: {}", cover_art_id_clone, e);
+            }
+        });
+
+        // 更新数据库中的封面路径
+        sqlx::query("UPDATE albums SET cover_art_path = ? WHERE id = ?")
+            .bind(&cover_art_id)
+            .bind(album_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    /// 静态方法:预热封面缓存
+    async fn prewarm_cover_cache_static(
+        cover_art_id: &str,
+        original_path: &str,
+    ) -> Result<(), std::io::Error> {
+        const DEFAULT_SIZE: u32 = 300;
+        const CACHE_PATH: &str = "./coverArt/webp";
+
+        let webp_dir = PathBuf::from(CACHE_PATH);
+        if !webp_dir.exists() {
+            std::fs::create_dir_all(&webp_dir)?;
+        }
+
+        let cache_path = crate::utils::image_utils::get_webp_cache_path(cover_art_id, DEFAULT_SIZE);
+        let original_path = original_path.to_string();
+        let cache_path_clone = cache_path.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let config = crate::utils::image_utils::WebPConfig::default();
+            crate::utils::image_utils::resize_and_convert_to_webp(
+                Path::new(&original_path),
+                &cache_path_clone,
+                DEFAULT_SIZE,
+                &config,
+            )
+        })
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Task join error: {}", e)))??;
+
+        Ok(())
+    }
+
+    /// 在事务中保存到数据库(封面延迟处理版本)
+    #[allow(clippy::too_many_arguments)]
+    async fn save_to_database_tx_deferred_cover(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        pending_covers: &mut Vec<(String, String, Box<[u8]>)>,
+        artist_name: &str,
+        album_name: &str,
+        title: &str,
+        path: &Path,
+        duration: i32,
+        bit_rate: Option<i32>,
+        year: Option<i32>,
+        genre: Option<&str>,
+        track_number: Option<i32>,
+        disc_number: Option<i32>,
+        content_type: &str,
+        file_size: Option<u64>,
+        cover_art_raw: Option<(String, Box<[u8]>)>,
+        lyrics: Option<&str>,
+    ) -> Result<(), AppError> {
+        // 插入或更新艺术家
+        let artist_id = self.get_or_create_artist_tx(tx, artist_name).await?;
+
+        // 插入或更新专辑(不处理封面)
+        let album_id = self
+            .get_or_create_album_tx_no_cover(tx, &artist_id, album_name, year, genre)
+            .await?;
+
+        // 如果有封面数据,添加到待处理列表
+        if let Some((mime_type, data)) = cover_art_raw {
+            pending_covers.push((album_id.clone(), mime_type, data));
+        }
+
+        // 插入或更新歌曲
+        self.get_or_create_song_tx(
+            tx,
+            &album_id,
+            &artist_id,
+            title,
+            duration,
+            bit_rate,
+            year,
+            genre,
+            track_number,
+            disc_number,
+            path,
+            content_type,
+            file_size,
+            lyrics,
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    /// 获取或创建专辑(事务版本,不处理封面)
+    async fn get_or_create_album_tx_no_cover(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        artist_id: &str,
+        name: &str,
+        year: Option<i32>,
+        genre: Option<&str>,
+    ) -> Result<String, AppError> {
+        // 查找已存在的专辑
+        let existing = sqlx::query_as::<_, (String, Option<i32>, Option<String>)>(
+            "SELECT id, year, genre FROM albums WHERE artist_id = ? AND name = ?",
+        )
+        .bind(artist_id)
+        .bind(name)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        if let Some((album_id, existing_year, existing_genre)) = existing {
+            // 更新元数据(不包括封面)
+            let year_to_use = existing_year.or(year);
+            let genre_to_use = existing_genre.as_deref().or(genre);
+
+            if year_to_use != existing_year || genre_to_use != existing_genre.as_deref() {
+                sqlx::query(
+                    "UPDATE albums SET year = ?, genre = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                )
+                .bind(year_to_use)
+                .bind(genre_to_use)
+                .bind(&album_id)
+                .execute(&mut **tx)
+                .await?;
+            }
+
+            return Ok(album_id);
+        }
+
+        // 创建新专辑(不包含封面)
+        let album = Album::new(
+            artist_id.to_string(),
+            name.to_string(),
+            path_to_string(&self.library_path),
+            year,
+            genre.map(|s| s.to_string()),
+            None,
+        );
+
+        sqlx::query(
+            "INSERT INTO albums (id, artist_id, name, year, genre, cover_art_path, cover_art_hash, path,
+             song_count, duration, play_count, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, 0, 0, 0, ?, ?)",
+        )
+        .bind(&album.id)
+        .bind(&album.artist_id)
+        .bind(&album.name)
+        .bind(&album.year)
+        .bind(&album.genre)
+        .bind(&album.path)
+        .bind(album.created_at)
+        .bind(album.updated_at)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(album.id)
+    }
+
+    /// 在事务中保存到数据库
+    #[allow(clippy::too_many_arguments)]
+    async fn save_to_database_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        artist_name: &str,
+        album_name: &str,
+        title: &str,
+        path: &Path,
+        duration: i32,
+        bit_rate: Option<i32>,
+        year: Option<i32>,
+        genre: Option<&str>,
+        track_number: Option<i32>,
+        disc_number: Option<i32>,
+        content_type: &str,
+        file_size: Option<u64>,
+        cover_art_raw: Option<(String, Box<[u8]>)>,
+        lyrics: Option<&str>,
+    ) -> Result<(), AppError> {
+        // 插入或更新艺术家
+        let artist_id = self.get_or_create_artist_tx(tx, artist_name).await?;
+
+        // 插入或更新专辑
+        let album_id = self
+            .get_or_create_album_tx(tx, &artist_id, album_name, year, genre, cover_art_raw)
+            .await?;
+
+        // 插入或更新歌曲
+        self.get_or_create_song_tx(
+            tx,
+            &album_id,
+            &artist_id,
+            title,
+            duration,
+            bit_rate,
+            year,
+            genre,
+            track_number,
+            disc_number,
+            path,
+            content_type,
+            file_size,
+            lyrics,
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    /// 处理单个音频文件 (保留用于兼容)
     async fn process_audio_file(&self, path: &Path) -> Result<(), AppError> {
         let metadata: AudioMetadata = self.read_audio_metadata(path).await?;
         // 保存到数据库
@@ -436,7 +1106,41 @@ impl ScanService {
         Ok(())
     }
 
-    /// 获取或创建艺术家
+    /// 获取或创建艺术家 (事务版本)
+    async fn get_or_create_artist_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        name: &str,
+    ) -> Result<String, AppError> {
+        // 先尝试查找
+        let existing = sqlx::query_scalar::<_, String>("SELECT id FROM artists WHERE name = ?")
+            .bind(name)
+            .fetch_optional(&mut **tx)
+            .await?;
+
+        if let Some(id) = existing {
+            return Ok(id);
+        }
+
+        // 创建新艺术家
+        let artist = Artist::new(name.to_string(), None, None);
+        sqlx::query(
+            "INSERT INTO artists (id, name, music_brainz_id, cover_art_path, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)"
+        )
+        .bind(&artist.id)
+        .bind(&artist.name)
+        .bind(&artist.music_brainz_id)
+        .bind(&artist.cover_art_path)
+        .bind(artist.created_at)
+        .bind(artist.updated_at)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(artist.id)
+    }
+
+    /// 获取或创建艺术家 (原版本,保留兼容性)
     async fn get_or_create_artist(&self, name: &str) -> Result<String, AppError> {
         // 先尝试查找
         let existing = sqlx::query_scalar::<_, String>("SELECT id FROM artists WHERE name = ?")
@@ -464,6 +1168,263 @@ impl ScanService {
         .await?;
 
         Ok(artist.id)
+    }
+
+    /// 获取或创建专辑 (事务版本)
+    async fn get_or_create_album_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        artist_id: &str,
+        name: &str,
+        year: Option<i32>,
+        genre: Option<&str>,
+        cover_art_raw: Option<(String, Box<[u8]>)>,
+    ) -> Result<String, AppError> {
+        // 查找已存在的专辑
+        let existing = sqlx::query_as::<_, (String, Option<i32>, Option<String>, Option<String>, Option<String>)>(
+            "SELECT id, year, genre, cover_art_path, cover_art_hash FROM albums WHERE artist_id = ? AND name = ?",
+        )
+        .bind(artist_id)
+        .bind(name)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        if let Some((album_id, existing_year, existing_genre, existing_cover_path, existing_cover_hash)) = existing {
+            self.update_album_if_needed_tx(
+                tx,
+                &album_id,
+                year,
+                genre,
+                existing_year,
+                existing_genre.as_deref(),
+                existing_cover_path,
+                existing_cover_hash,
+                cover_art_raw,
+            )
+            .await?;
+            return Ok(album_id);
+        }
+
+        // 创建新专辑
+        self.create_new_album_tx(tx, artist_id, name, year, genre, cover_art_raw)
+            .await
+    }
+
+    /// 创建新专辑 (事务版本)
+    async fn create_new_album_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        artist_id: &str,
+        name: &str,
+        year: Option<i32>,
+        genre: Option<&str>,
+        cover_art_raw: Option<(String, Box<[u8]>)>,
+    ) -> Result<String, AppError> {
+        let mut album = Album::new(
+            artist_id.to_string(),
+            name.to_string(),
+            path_to_string(&self.library_path),
+            year,
+            genre.map(|s| s.to_string()),
+            None,
+        );
+
+        let mut cover_art_hash: Option<String> = None;
+
+        // 处理封面图片
+        if let Some((mime_type, data)) = cover_art_raw {
+            cover_art_hash = Some(calculate_image_hash(&data));
+            let cover_art_id = self.process_cover_art(&mime_type, &data).await?;
+            album.cover_art_path = Some(cover_art_id);
+        }
+
+        sqlx::query(
+            "INSERT INTO albums (id, artist_id, name, year, genre, cover_art_path, cover_art_hash, path,
+             song_count, duration, play_count, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)",
+        )
+        .bind(&album.id)
+        .bind(&album.artist_id)
+        .bind(&album.name)
+        .bind(&album.year)
+        .bind(&album.genre)
+        .bind(&album.cover_art_path)
+        .bind(&cover_art_hash)
+        .bind(&album.path)
+        .bind(album.created_at)
+        .bind(album.updated_at)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(album.id)
+    }
+
+    /// 更新专辑 (事务版本)
+    #[allow(clippy::too_many_arguments)]
+    async fn update_album_if_needed_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        album_id: &str,
+        new_year: Option<i32>,
+        new_genre: Option<&str>,
+        existing_year: Option<i32>,
+        existing_genre: Option<&str>,
+        existing_cover_path: Option<String>,
+        existing_cover_hash: Option<String>,
+        cover_art_raw: Option<(String, Box<[u8]>)>,
+    ) -> Result<(), AppError> {
+        let year_to_use = existing_year.or(new_year);
+        let genre_to_use = existing_genre.or(new_genre);
+
+        let year_changed = year_to_use != existing_year;
+        let genre_changed = genre_to_use != existing_genre;
+
+        let mut new_cover_path = existing_cover_path.clone();
+        let mut new_cover_hash = existing_cover_hash.clone();
+        let mut cover_changed = false;
+
+        if existing_cover_path.is_none() && existing_cover_hash.is_none() {
+            if let Some((mime_type, data)) = cover_art_raw {
+                let cover_art_id = self.process_cover_art(&mime_type, &data).await?;
+                new_cover_path = Some(cover_art_id);
+                new_cover_hash = Some(calculate_image_hash(&data));
+                cover_changed = true;
+            }
+        }
+
+        if year_changed || genre_changed || cover_changed {
+            sqlx::query(
+                "UPDATE albums
+                 SET year = ?, genre = ?, cover_art_path = ?, cover_art_hash = ?, updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?",
+            )
+            .bind(year_to_use)
+            .bind(genre_to_use)
+            .bind(&new_cover_path)
+            .bind(&new_cover_hash)
+            .bind(album_id)
+            .execute(&mut **tx)
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    /// 获取或创建歌曲 (事务版本)
+    #[allow(clippy::too_many_arguments)]
+    async fn get_or_create_song_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        album_id: &str,
+        artist_id: &str,
+        title: &str,
+        duration: i32,
+        bit_rate: Option<i32>,
+        year: Option<i32>,
+        genre: Option<&str>,
+        track_number: Option<i32>,
+        disc_number: Option<i32>,
+        path: &Path,
+        content_type: &str,
+        file_size: Option<u64>,
+        lyrics: Option<&str>,
+    ) -> Result<(), AppError> {
+        let existing = sqlx::query_scalar::<_, String>("SELECT id FROM songs WHERE file_path = ?")
+            .bind(path_to_string(path))
+            .fetch_optional(&mut **tx)
+            .await?;
+
+        let song = Song::new(
+            album_id.to_string(),
+            artist_id.to_string(),
+            title.to_string(),
+            duration,
+            path_to_string(path),
+            track_number,
+            disc_number,
+            bit_rate,
+            genre.map(|s| s.to_string()),
+            year,
+            Some(content_type.to_string()),
+            file_size.map(|s| s as i64),
+            lyrics.map(|s| s.to_string()),
+        );
+
+        if existing.is_some() {
+            sqlx::query(
+                "UPDATE songs
+                 SET title = ?, track_number = ?, disc_number = ?, duration = ?, bit_rate = ?,
+                     genre = ?, year = ?, content_type = ?, file_size = ?, lyrics = ?, updated_at = ?
+                 WHERE file_path = ?",
+            )
+            .bind(&song.title)
+            .bind(song.track_number.unwrap_or_default())
+            .bind(song.disc_number.unwrap_or_default())
+            .bind(song.duration)
+            .bind(song.bit_rate.unwrap_or_default())
+            .bind(song.genre.clone().unwrap_or_default())
+            .bind(song.year.unwrap_or_default())
+            .bind(song.content_type.clone().unwrap_or_default())
+            .bind(song.file_size.unwrap_or_default())
+            .bind(song.lyrics.clone().unwrap_or_default())
+            .bind(song.updated_at)
+            .bind(path_to_string(path))
+            .execute(&mut **tx)
+            .await?;
+
+            self.update_album_stats_tx(tx, album_id).await?;
+        } else {
+            sqlx::query(
+                "INSERT INTO songs (id, album_id, artist_id, title, track_number, disc_number,
+                 duration, bit_rate, genre, year, content_type, file_path, file_size, lyrics, play_count,
+                 created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+            )
+            .bind(&song.id)
+            .bind(&song.album_id)
+            .bind(&song.artist_id)
+            .bind(&song.title)
+            .bind(&song.track_number)
+            .bind(&song.disc_number)
+            .bind(&song.duration)
+            .bind(&song.bit_rate)
+            .bind(&song.genre)
+            .bind(&song.year)
+            .bind(&song.content_type)
+            .bind(&song.file_path)
+            .bind(&song.file_size)
+            .bind(&song.lyrics)
+            .bind(song.created_at)
+            .bind(song.updated_at)
+            .execute(&mut **tx)
+            .await?;
+
+            self.update_album_stats_tx(tx, album_id).await?;
+        }
+
+        Ok(())
+    }
+
+    /// 更新专辑统计 (事务版本)
+    async fn update_album_stats_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        album_id: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            "UPDATE albums
+             SET song_count = (SELECT COUNT(*) FROM songs WHERE album_id = ?),
+                 duration = (SELECT COALESCE(SUM(duration), 0) FROM songs WHERE album_id = ?),
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?",
+        )
+        .bind(album_id)
+        .bind(album_id)
+        .bind(album_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
     }
 
     /// 获取或创建专辑

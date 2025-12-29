@@ -25,6 +25,7 @@ pub struct ScanStatusResponse {
 pub struct ScanStatus {
     scanning: bool,
     count: usize,
+    current: usize,
 }
 
 /// 扫描请求参数
@@ -119,12 +120,14 @@ pub async fn get_scan_status(
     axum::extract::State(state): axum::extract::State<LibraryState>,
 ) -> Result<Json<SubsonicResponse<ScanStatusResponse>>, AppError> {
     let scanning = *state.scan_state.scanning.lock().await;
+    let count = *state.scan_state.count.lock().await;
+    let current = *state.scan_state.current.lock().await;
 
     // 从 service 层获取歌曲总数
-    let count = state.library_service.get_song_count().await?;
+    // let count = state.library_service.get_song_count().await?;
 
     let result = ScanStatusResponse {
-        scan_status: ScanStatus { scanning, count },
+        scan_status: ScanStatus { scanning, count, current },
     };
 
     Ok(Json(SubsonicResponse {
@@ -142,16 +145,10 @@ pub async fn start_scan(
     axum::extract::State(state): axum::extract::State<LibraryState>,
     _params: Query<ScanParams>,
 ) -> Result<Json<SubsonicResponse<()>>, AppError> {
-    // 记录耗时
-    let start_time = std::time::Instant::now();
-    tracing::info!("开始扫描");
-
     let mut scanning = state.scan_state.scanning.lock().await;
-
     if *scanning {
         return Err(AppError::server_busy("Scan already in progress"));
     }
-
     *scanning = true;
 
     // 启动后台扫描任务
@@ -170,7 +167,6 @@ pub async fn start_scan(
         // 更新状态
         let mut scanning = scan_state.scanning.lock().await;
         *scanning = false;
-        tracing::info!("扫描结束,耗时: {}s", start_time.elapsed().as_secs());
     });
 
     Ok(Json(SubsonicResponse {
