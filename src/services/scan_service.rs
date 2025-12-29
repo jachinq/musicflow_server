@@ -94,9 +94,6 @@ impl ScanService {
         }
 
         let total_files = paths.len();
-        let mut count = scan_state.count.lock().await;
-        *count = total_files;
-        drop(count); // 释放锁
 
         tracing::info!("发现 {} 个音频文件", total_files);
 
@@ -244,6 +241,7 @@ impl ScanService {
             if processed % 10 == 0 || processed == total_files {
                 let mut current = scan_state.current.lock().await;
                 *current = processed;
+                drop(current); // unlock
 
                 // 每100个文件输出一次进度日志
                 if processed % 100 == 0 || processed == total_files {
