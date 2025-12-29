@@ -1,7 +1,7 @@
 //! 用户管理端点处理器
 #![allow(dead_code)]
 
-use axum::{extract::Query, routing::{get, post}, Json, Router};
+use axum::{Json, Router, extract::Query, routing::{connect, get, post}};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -155,7 +155,7 @@ pub async fn change_password(
 
 pub fn routes() -> Router<Arc<UserService>> {
     Router::new()
-        .route("/rest/getUser", get(get_user))
+        .route("/rest/getUser", connect(get_user))
         .route("/rest/getUsers", get(get_users))
         .route("/rest/createUser", post(create_user))
         .route("/rest/deleteUser", post(delete_user))

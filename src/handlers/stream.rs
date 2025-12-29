@@ -70,16 +70,16 @@ pub async fn stream(
     Query(params): Query<StreamParams>,
 ) -> Result<impl IntoResponse, AppError> {
     // 根据ID查询歌曲信息
-    let song = sqlx::query!(
-        "SELECT file_path, content_type FROM songs WHERE id = ?",
-        params.id
+    let song = sqlx::query_as::<_, (String, Option<String>)>(
+        "SELECT file_path, content_type FROM songs WHERE id = ?"
     )
+    .bind(&params.id)
     .fetch_optional(&*pool)
     .await?;
 
-    let song = song.ok_or_else(|| AppError::not_found("Song"))?;
+    let (file_path_str, content_type) = song.ok_or_else(|| AppError::not_found("Song"))?;
 
-    let file_path = PathBuf::from(&song.file_path);
+    let file_path = PathBuf::from(&file_path_str);
 
     // 检查文件是否存在
     if !file_path.exists() {
@@ -97,8 +97,7 @@ pub async fn stream(
 
     // 设置响应头
     let mut headers = HeaderMap::new();
-    let content_type = song
-        .content_type
+    let content_type = content_type
         .unwrap_or_else(|| "audio/mpeg".to_string());
     headers.insert("Content-Type", content_type.parse().unwrap());
     headers.insert("Accept-Ranges", "bytes".parse().unwrap());
@@ -132,13 +131,16 @@ pub async fn download(
     }
 
     // 根据ID查询歌曲信息
-    let song = sqlx::query!("SELECT file_path, title FROM songs WHERE id = ?", params.id)
-        .fetch_optional(&*pool)
-        .await?;
+    let song = sqlx::query_as::<_, (String, String)>(
+        "SELECT file_path, title FROM songs WHERE id = ?"
+    )
+    .bind(&params.id)
+    .fetch_optional(&*pool)
+    .await?;
 
-    let song = song.ok_or_else(|| AppError::not_found("Song"))?;
+    let (file_path_str, title) = song.ok_or_else(|| AppError::not_found("Song"))?;
 
-    let file_path = PathBuf::from(&song.file_path);
+    let file_path = PathBuf::from(&file_path_str);
 
     // 检查文件是否存在
     if !file_path.exists() {
@@ -159,7 +161,7 @@ pub async fn download(
     headers.insert("Content-Type", "application/octet-stream".parse().unwrap());
     headers.insert(
         "Content-Disposition",
-        format!("attachment; filename=\"{}\"", song.title)
+        format!("attachment; filename=\"{}\"", title)
             .parse()
             .unwrap(),
     );
@@ -332,10 +334,13 @@ pub async fn get_lyrics(
 
     // 如果找到歌曲，查询艺术家名称并返回歌词
     if let Some((lyrics, artist_id, title)) = song {
-        let artist_name = sqlx::query_scalar::<_, String>("SELECT name FROM artists WHERE id = ?")
+        let artist_name = sqlx::query_as::<_, (String,)>(
+            "SELECT name FROM artists WHERE id = ?"
+        )
             .bind(&artist_id)
             .fetch_optional(&*pool)
-            .await?;
+            .await?
+            .map(|(name,)| name);
 
         let lyrics_response = LyricsResponse {
             lyrics: Lyrics {

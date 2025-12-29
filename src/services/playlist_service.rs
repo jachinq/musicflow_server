@@ -424,20 +424,20 @@ impl PlaylistService {
         playlist_id: &str,
     ) -> Result<(), AppError> {
         // 计算歌曲数量和总时长
-        let stats = sqlx::query!(
+        let stats = sqlx::query_as::<_, (i32, Option<i32>)>(
             "SELECT
                 COUNT(*) as count,
                 SUM(duration) as total_duration
              FROM playlist_songs ps
              JOIN songs s ON ps.song_id = s.id
-             WHERE ps.playlist_id = ?",
-            playlist_id
+             WHERE ps.playlist_id = ?"
         )
+        .bind(playlist_id)
         .fetch_one(&mut **tx)
         .await?;
 
-        let song_count = stats.count;
-        let duration = stats.total_duration.unwrap_or(0);
+        let (song_count, total_duration) = stats;
+        let duration = total_duration.unwrap_or(0);
 
         // 更新播放列表
         sqlx::query(

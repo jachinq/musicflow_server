@@ -238,7 +238,7 @@ futures = "0.3"
 #### 1.2 创建环境配置
 ```bash
 # .env
-DATABASE_URL=sqlite:music_flow.db
+DATABASE_URL=sqlite:data/music_flow.db
 PORT=4040
 HOST=127.0.0.1
 MUSIC_LIBRARY_PATH=/path/to/your/music
@@ -1680,7 +1680,7 @@ mkdir -p migrations
 mkdir -p tests/{unit,integration}
 
 # 设置数据库（SQLite 无需创建数据库，只需指定文件路径）
-export DATABASE_URL="sqlite:music_flow.db"
+export DATABASE_URL="sqlite:data/music_flow.db"
 
 # 运行迁移（会自动创建数据库文件）
 sqlx migrate run

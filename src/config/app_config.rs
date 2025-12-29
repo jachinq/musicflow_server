@@ -25,12 +25,12 @@ impl AppConfig {
 
         Ok(Self {
             database_url: env::var("DATABASE_URL")
-                .unwrap_or_else(|_| "sqlite:music_flow.db".to_string()),
+                .unwrap_or_else(|_| "sqlite:data/music_flow.db".to_string()),
             port: env::var("PORT")
                 .unwrap_or_else(|_| "4040".to_string())
                 .parse()
                 .unwrap_or(4040),
-            host: env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
+            host: env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
             music_library_path: PathBuf::from(
                 env::var("MUSIC_LIBRARY_PATH").unwrap_or_else(|_| "/path/to/music".to_string()),
             ),

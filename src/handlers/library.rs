@@ -120,14 +120,14 @@ pub async fn get_scan_status(
     axum::extract::State(state): axum::extract::State<LibraryState>,
 ) -> Result<Json<SubsonicResponse<ScanStatusResponse>>, AppError> {
     let scanning = *state.scan_state.scanning.lock().await;
-    let count = *state.scan_state.count.lock().await;
-    let current = *state.scan_state.current.lock().await;
+    // let count = *state.scan_state.count.lock().await;
+    // let current = *state.scan_state.current.lock().await;
 
     // 从 service 层获取歌曲总数
-    // let count = state.library_service.get_song_count().await?;
+    let count = state.library_service.get_song_count().await?;
 
     let result = ScanStatusResponse {
-        scan_status: ScanStatus { scanning, count, current },
+        scan_status: ScanStatus { scanning, count, current: 0 },
     };
 
     Ok(Json(SubsonicResponse {

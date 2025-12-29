@@ -67,7 +67,7 @@ cp .env.example .env
 
 # 3. 运行数据库迁移
 touch music_flow.db
-DATABASE_URL=sqlite:music_flow.db
+DATABASE_URL=sqlite:data/music_flow.db
 sqlx migrate run
 
 # 4. 编译项目
@@ -98,7 +98,7 @@ cargo watch -x run
 
 ```bash
 # 数据库 (SQLite)
-DATABASE_URL=sqlite:music_flow.db
+DATABASE_URL=sqlite:data/music_flow.db
 
 # 服务器配置
 PORT=4040

@@ -63,7 +63,7 @@ impl From<SongDetailDto> for Song {
             duration: dto.duration,
             bit_rate: dto.bit_rate,
             content_type: dto.content_type.unwrap_or_else(|| "audio/mpeg".to_string()),
-            path: None,
+            path: dto.path,
             track_number: dto.track_number,
             disc_number: dto.disc_number,
             cover_art: dto.cover_art,

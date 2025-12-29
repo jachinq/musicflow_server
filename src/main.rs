@@ -2,9 +2,8 @@
 //!
 //! Subsonic API 兼容的音乐流媒体服务器
 
+use crate::services::{song_service::CommState, SongService};
 use axum::{middleware as axum_middleware, Router};
-use crate::services::{SongService, song_service::CommState};
-use sqlx::query;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::services::ServeDir;
@@ -21,7 +20,9 @@ mod utils;
 
 use config::AppConfig;
 use database::{get_db_pool, run_migrations, DbPool};
-use services::{AuthService, LibraryService, PlaylistService, ScanService, ServiceContext, UserService};
+use services::{
+    AuthService, LibraryService, PlaylistService, ScanService, ServiceContext, UserService,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -38,13 +39,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .with_target(true), // 显示模块路径(target)
         )
         .init();
+    tracing::debug!("Loaded config: {:?}", config);
 
     tracing::info!("Starting {} v{}", config.app_name, config.app_version);
 
     // 3. 验证音乐库路径
     if let Err(e) = config.validate_music_library() {
         tracing::warn!("Music library validation warning: {}", e);
-        tracing::warn!("Please set MUSIC_LIBRARY_PATH to a valid directory");
+        tracing::error!("Please set MUSIC_LIBRARY_PATH to a valid directory");
+        return Ok(());
     }
 
     // 4. 连接数据库
@@ -67,7 +70,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let service_ctx = Arc::new(ServiceContext::new(pool.clone()));
 
     let auth_service = Arc::new(AuthService::new(pool.clone()));
-    let scan_service = Arc::new(ScanService::new(pool.clone(), config.music_library_path.clone()));
+    let scan_service = Arc::new(ScanService::new(
+        pool.clone(),
+        config.music_library_path.clone(),
+    ));
     let song_service = Arc::new(SongService::new(pool.clone()));
     let library_service = Arc::new(LibraryService::new(service_ctx.clone()));
     let user_service = Arc::new(UserService::new(service_ctx.clone(), auth_service.clone()));
@@ -192,20 +198,18 @@ async fn create_default_admin(pool: &DbPool) -> Result<(), anyhow::Error> {
 
         let id = uuid::Uuid::new_v4().to_string();
 
-        query!(
+        sqlx::query(
             "INSERT INTO users (id, username, password, email, is_admin) VALUES (?, ?, ?, ?, ?)",
-            id,
-            "admin",
-            "admin",
-            "admin@example.com",
-            true
         )
+        .bind(id)
+        .bind("admin")
+        .bind("admin")
+        .bind("admin@localhost")
+        .bind(true)
         .execute(pool)
         .await?;
 
-        tracing::info!(
-            "Default admin created: username='admin', password='admin'"
-        );
+        tracing::info!("Default admin created: username='admin', password='admin'");
         tracing::warn!("Please change the default password immediately!");
     }
 
