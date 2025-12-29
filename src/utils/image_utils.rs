@@ -50,7 +50,52 @@ pub fn resize_and_convert_to_webp(
     let img = image::open(input_path).map_err(|e| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!("Failed to open image: {}", e),
+            format!("Failed to open image: {} input={}", e, input_path.display()),
+        )
+    })?;
+
+    // 计算缩放尺寸（保持宽高比，不放大）
+    let (width, height) = img.dimensions();
+    let (new_width, new_height) = calculate_resize_dimensions(width, height, target_size);
+
+    // 缩放（Lanczos3 高质量滤波器）
+    let resized = img.resize_exact(new_width, new_height, FilterType::Lanczos3);
+
+    // 转换为 WebP
+    let webp = compress_img(&resized, config.quality);
+    if webp.is_err() {
+        // 压缩失败，保存为不压缩的 WebP
+        resized
+            .save_with_format(output_path, ImageFormat::WebP)
+            .map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to save WebP: {}", e),
+                )
+            })?;
+    } else {
+        let output_path = output_path.to_string_lossy().to_string();
+        write_image_to_file(&webp.unwrap(), &output_path).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to compress and save WebP: {}", e),
+            )
+        })?;
+    }
+
+    Ok(())
+}
+
+pub fn resize_and_convert_to_webp_by_data(    
+    data: &[u8],
+    output_path: &Path,
+    target_size: u32,
+    config: &WebPConfig,) -> Result<(), std::io::Error> {
+    // 读取原图
+    let img = image::load_from_memory(data).map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Failed to open image: {} output={}", e, output_path.display()),
         )
     })?;
 
