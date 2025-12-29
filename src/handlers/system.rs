@@ -1,41 +1,42 @@
 // handlers/system.rs
-use axum::{Router, routing::get, Json};
+use axum::{routing::get, Router};
 use serde::Serialize;
-use crate::models::response::{SubsonicResponse, ResponseContainer};
+
+use crate::extractors::Format;
+use crate::models::response::ToXml;
+use crate::response::ApiResponse;
 
 // GET /rest/ping
-pub async fn ping() -> Json<SubsonicResponse<()>> {
-    Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    })
+pub async fn ping(Format(format): Format) -> ApiResponse<()> {
+    ApiResponse::ok(None, format)
 }
 
 // GET /rest/getLicense
-pub async fn get_license() -> Json<SubsonicResponse<LicenseResponse>> {
-    Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(LicenseResponse {
-                valid: true,
-                email: "admin@example.com".to_string(),
-                key: "licensed".to_string(),
-            }),
-        },
-    })
+pub async fn get_license(Format(format): Format) -> ApiResponse<LicenseResponse> {
+    let license = LicenseResponse {
+        valid: true,
+        email: "admin@example.com".to_string(),
+        key: "licensed".to_string(),
+    };
+
+    ApiResponse::ok(Some(license), format)
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LicenseResponse {
-    pub valid: bool,
-    pub email: String,
-    pub key: String,
+    pub valid: bool,   // JSON: "valid" (干净!)
+    pub email: String, // JSON: "email"
+    pub key: String,   // JSON: "key"
+}
+
+// 实现 ToXml trait 用于 XML 序列化
+impl ToXml for LicenseResponse {
+    fn to_xml_element(&self) -> String {
+        format!(
+            "<license valid=\"{}\" email=\"{}\" key=\"{}\"/>",
+            self.valid, self.email, self.key
+        )
+    }
 }
 
 pub fn routes() -> Router {

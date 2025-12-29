@@ -11,6 +11,7 @@ pub mod rating;
 pub mod common;
 pub mod search;
 pub mod genre;
+pub mod format;
 
 // 导出常用类型
 pub use artist::*;
@@ -23,3 +24,7 @@ pub use rating::*;
 pub use common::*;
 pub use search::*;
 pub use genre::*;
+pub use format::ResponseFormat;
+
+// 导出 XML 序列化 trait
+pub use common::ToXml;

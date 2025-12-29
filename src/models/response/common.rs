@@ -3,8 +3,29 @@
 
 use serde::{Deserialize, Serialize};
 
+/// XML 序列化 trait
+///
+/// 用于将响应数据手动序列化为 XML 元素
+/// 不依赖 serde 的 @ 标记,保持 JSON 输出干净
+pub trait ToXml {
+    /// 将对象序列化为 XML 元素字符串
+    fn to_xml_element(&self) -> String;
+}
+
+// 为空类型实现 ToXml
+impl ToXml for () {
+    fn to_xml_element(&self) -> String {
+        String::new()
+    }
+}
+
 /// Subsonic 响应容器
+///
+/// 支持 JSON 和 XML 两种格式:
+/// - JSON: 标准 JSON 对象,字段名干净无 @ 前缀
+/// - XML: 通过 to_xml() 方法手动构建,status/version 作为属性
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename = "subsonic-response")]
 pub struct SubsonicResponse<T> {
     #[serde(rename = "subsonic-response")]
     pub response: ResponseContainer<T>,
@@ -13,10 +34,17 @@ pub struct SubsonicResponse<T> {
 /// 响应容器
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseContainer<T> {
+    /// 响应状态: "ok" 或 "failed"
     pub status: String,
+
+    /// API 版本号
     pub version: String,
+
+    /// 错误信息 (仅在 status="failed" 时存在)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<SubsonicError>,
+
+    /// 实际响应数据
     #[serde(flatten)]
     pub data: Option<T>,
 }
@@ -180,6 +208,7 @@ pub struct Hls {
 pub type StatusResponse = SubsonicResponse<()>;
 
 impl<T> SubsonicResponse<T> {
+    /// 创建成功响应 (JSON 格式)
     pub fn ok(data: Option<T>) -> Self {
         Self {
             response: ResponseContainer {
@@ -191,6 +220,19 @@ impl<T> SubsonicResponse<T> {
         }
     }
 
+    /// 创建成功响应 (XML 格式,带命名空间)
+    pub fn ok_xml(data: Option<T>) -> Self {
+        Self {
+            response: ResponseContainer {
+                status: "ok".to_string(),
+                version: "1.16.1".to_string(),
+                error: None,
+                data,
+            },
+        }
+    }
+
+    /// 创建失败响应 (JSON 格式)
     pub fn failed(code: i32, message: String) -> Self {
         Self {
             response: ResponseContainer {
@@ -201,4 +243,67 @@ impl<T> SubsonicResponse<T> {
             },
         }
     }
+
+    /// 创建失败响应 (XML 格式,带命名空间)
+    pub fn failed_xml(code: i32, message: String) -> Self {
+        Self {
+            response: ResponseContainer {
+                status: "failed".to_string(),
+                version: "1.16.1".to_string(),
+                error: Some(SubsonicError { code, message }),
+                data: None,
+            },
+        }
+    }
+}
+
+impl<T: ToXml> SubsonicResponse<T> {
+    /// 序列化为 XML 字符串
+    ///
+    /// 使用手动构建的方式确保符合 Subsonic API 规范:
+    /// - XML 声明
+    /// - 命名空间作为属性
+    /// - status 和 version 作为属性
+    /// - 数据通过 ToXml trait 序列化
+    pub fn to_xml(&self) -> String {
+        let response = &self.response;
+
+        // 手动构建 XML 根元素
+        let mut xml = String::from("<subsonic-response xmlns=\"http://subsonic.org/restapi\"");
+        xml.push_str(&format!(" status=\"{}\"", response.status));
+        xml.push_str(&format!(" version=\"{}\"", response.version));
+        xml.push_str(" serverVersion=\"1.0.0\"");
+        // xml.push_str(" openSubsonic=true");
+
+        // 如果有 data,添加子元素
+        if let Some(ref data) = response.data {
+            xml.push('>');
+            xml.push_str(&data.to_xml_element());
+            xml.push_str("</subsonic-response>");
+        } else if let Some(ref error) = response.error {
+            xml.push('>');
+            xml.push_str(&format!(
+                "<error code=\"{}\" message=\"{}\"/>",
+                error.code,
+                html_escape(&error.message)
+            ));
+            xml.push_str("</subsonic-response>");
+        } else {
+            // 空响应
+            xml.push_str("></subsonic-response
+>");
+        }
+
+        // format!(r#"<?xml version="1.0" encoding="UTF-8"?>{}"#, xml)
+        xml
+    }
+}
+
+/// HTML/XML 转义辅助函数
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }

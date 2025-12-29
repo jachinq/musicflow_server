@@ -6,7 +6,9 @@
 pub mod config;
 pub mod database;
 pub mod error;
+pub mod extractors;
 pub mod models;
+pub mod response;
 pub mod utils;
 pub mod handlers;
 pub mod middleware;
