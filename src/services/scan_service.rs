@@ -4,7 +4,7 @@
 use crate::error::AppError;
 use crate::handlers::library::ScanState;
 use crate::models::entities::{Album, Artist, Song};
-use crate::utils::{get_image_format, write_image_to_file};
+use crate::utils::{AudioMetadata, get_image_format, image_utils, write_image_to_file};
 use sha2::{Digest, Sha256};
 use sqlx::{Execute, SqlitePool};
 use std::fs::File;
@@ -30,27 +30,6 @@ pub struct ScanResult {
     pub songs: usize,
     pub failed: usize,
     pub deleted: usize,
-}
-
-/// 音频元数据
-#[derive(Debug, Default)]
-struct AudioMetadata {
-    title: Option<String>,
-    artist: Option<String>,
-    album: Option<String>,
-    album_artist: Option<String>,
-    genre: Option<String>,
-    year: Option<i32>,
-    track_number: Option<i32>,
-    disc_number: Option<i32>,
-    duration_secs: u64,
-    bit_rate: Option<i32>,
-    sample_rate: Option<i32>,
-    channels: Option<u8>,
-    content_type: String,
-    file_size: Option<u64>,
-    cover_art_raw: Option<(String, Box<[u8]>)>,
-    lyrics: Option<String>,
 }
 
 impl ScanService {
@@ -195,7 +174,7 @@ impl ScanService {
                     let path_clone = path.clone();
                     // 在阻塞线程池中解析元数据(CPU密集型)
                     let result = tokio::task::spawn_blocking(move || {
-                        Self::extract_audio_metadata_static(&path_clone)
+                        image_utils::extract_audio_metadata_static(&path_clone)
                     })
                     .await;
 
@@ -306,136 +285,6 @@ impl ScanService {
         );
 
         Ok(result)
-    }
-
-    /// 静态方法:提取音频元数据(无需实例)
-    fn extract_audio_metadata_static(path: &Path) -> Result<AudioMetadata, AppError> {
-        // 打开文件
-        let file = File::open(path)
-            .map_err(|e| AppError::ValidationError(format!("无法打开文件: {}", e)))?;
-
-        // 创建媒体源
-        let mss = MediaSourceStream::new(Box::new(file), Default::default());
-
-        // 创建格式提示
-        let mut hint = Hint::new();
-        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-            hint.with_extension(ext);
-        }
-
-        // 探测格式
-        let mut probed = symphonia::default::get_probe()
-            .format(
-                &hint,
-                mss,
-                &FormatOptions::default(),
-                &MetadataOptions::default(),
-            )
-            .map_err(|e| AppError::ValidationError(format!("无法探测音频格式: {}", e)))?;
-
-        let mut format = probed.format;
-        let track = format
-            .default_track()
-            .ok_or_else(|| AppError::ValidationError("没有找到音频轨道".to_string()))?;
-
-        let mut metadata = AudioMetadata::default();
-
-        // 获取时长信息
-        if let Some(time_base) = track.codec_params.time_base {
-            if let Some(n_frames) = track.codec_params.n_frames {
-                let duration = time_base.calc_time(n_frames);
-                metadata.duration_secs = duration.seconds;
-            }
-        }
-
-        // 获取采样率
-        if let Some(sample_rate) = track.codec_params.sample_rate {
-            metadata.sample_rate = Some(sample_rate as i32);
-        }
-
-        // 获取声道数
-        if let Some(channels) = track.codec_params.channels {
-            metadata.channels = Some(channels.count() as u8);
-        }
-
-        // 读取标签元数据
-        let meta = if format.metadata().current().is_some() {
-            Some(format.metadata())
-        } else {
-            if probed.metadata.get().is_some() {
-                Some(probed.metadata.get().unwrap())
-            } else {
-                None
-            }
-        };
-
-        if let Some(meta) = meta {
-            if let Some(metadata_rev) = meta.current() {
-                for tag in metadata_rev.tags() {
-                    match tag.std_key {
-                        Some(StandardTagKey::TrackTitle) => {
-                            metadata.title = Some(tag.value.to_string());
-                        }
-                        Some(StandardTagKey::Artist) => {
-                            metadata.artist = Some(tag.value.to_string());
-                        }
-                        Some(StandardTagKey::Album) => {
-                            metadata.album = Some(tag.value.to_string());
-                        }
-                        Some(StandardTagKey::AlbumArtist) => {
-                            metadata.album_artist = Some(tag.value.to_string());
-                        }
-                        Some(StandardTagKey::Genre) => {
-                            metadata.genre = Some(tag.value.to_string());
-                        }
-                        Some(StandardTagKey::Date) | Some(StandardTagKey::ReleaseDate) => {
-                            if let Ok(year) = tag.value.to_string().parse::<i32>() {
-                                metadata.year = Some(year);
-                            } else {
-                                if let Some(year_str) = tag.value.to_string().split('-').next() {
-                                    if let Ok(year) = year_str.parse::<i32>() {
-                                        metadata.year = Some(year);
-                                    }
-                                }
-                            }
-                        }
-                        Some(StandardTagKey::TrackNumber) => {
-                            let track_str = tag.value.to_string();
-                            if let Some(track_num) = track_str.split('/').next() {
-                                if let Ok(num) = track_num.parse::<i32>() {
-                                    metadata.track_number = Some(num);
-                                }
-                            }
-                        }
-                        Some(StandardTagKey::DiscNumber) => {
-                            let disc_str = tag.value.to_string();
-                            if let Some(disc_num) = disc_str.split('/').next() {
-                                if let Ok(num) = disc_num.parse::<i32>() {
-                                    metadata.disc_number = Some(num);
-                                }
-                            }
-                        }
-                        Some(StandardTagKey::Lyrics) => {
-                            metadata.lyrics = Some(tag.value.to_string());
-                        }
-                        _ => {}
-                    }
-                }
-
-                // 处理图片元数据
-                let album = metadata_rev
-                    .visuals()
-                    .iter()
-                    .map(|f| (f.media_type.clone(), f.data.clone()))
-                    .collect::<Vec<_>>();
-
-                album.iter().for_each(|f| {
-                    metadata.cover_art_raw = Some((f.0.to_string(), f.1.clone()));
-                });
-            }
-        }
-
-        Ok(metadata)
     }
 
     /// 获取数据库中已存在文件的路径和更新时间映射
@@ -587,7 +436,7 @@ impl ScanService {
         let cover_art_id_clone = cover_art_id.clone();
         tokio::spawn(async move {
             if let Err(e) =
-                Self::prewarm_cover_cache_static(&cover_art_id_clone, original_data).await
+                image_utils::prewarm_cover_cache_static(&cover_art_id_clone, original_data).await
             {
                 tracing::warn!("预热封面缓存失败 [cover_id={}]: {}", cover_art_id_clone, e);
             }
@@ -595,41 +444,6 @@ impl ScanService {
         tracing::debug!("异步缓存图片成功，耗时{:.2}", start.elapsed().as_secs_f64());
 
         Ok(cover_art_id)
-    }
-
-    /// 静态方法:预热封面缓存
-    async fn prewarm_cover_cache_static(
-        cover_art_id: &str,
-        // original_path: &str,
-        original_data: Box<[u8]>,
-    ) -> Result<(), std::io::Error> {
-        const DEFAULT_SIZE: u32 = 300;
-        const CACHE_PATH: &str = "./coverArt/webp";
-
-        let webp_dir = PathBuf::from(CACHE_PATH);
-        if !webp_dir.exists() {
-            std::fs::create_dir_all(&webp_dir)?;
-        }
-
-        let cache_path = crate::utils::image_utils::get_webp_cache_path(cover_art_id, DEFAULT_SIZE);
-        // let original_path = original_path.to_string();
-        let cache_path_clone = cache_path.clone();
-
-        tokio::task::spawn_blocking(move || {
-            let config = crate::utils::image_utils::WebPConfig::default();
-            crate::utils::image_utils::resize_and_convert_to_webp_by_data(
-                &original_data,
-                &cache_path_clone,
-                DEFAULT_SIZE,
-                &config,
-            )
-        })
-        .await
-        .map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("Task join error: {}", e))
-        })??;
-
-        Ok(())
     }
 
     /// 在事务中保存到数据库(封面延迟处理版本)

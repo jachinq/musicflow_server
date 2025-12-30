@@ -450,11 +450,11 @@ impl<T: ToXml> SubsonicResponse<T> {
 >");
         }
 
-        format!(r#"<?xml version="1.0" encoding="UTF-8"?>
+        // format!(r#"<?xmlversion="1.0" encoding="UTF-8"?>
         
-        {}
-        "#, xml)
-        // xml
+        // {}
+        // "#, xml)
+        xml
     }
 }
 

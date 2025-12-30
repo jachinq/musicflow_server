@@ -127,8 +127,8 @@ fn build_app(
     let system_routes = handlers::system::routes();
     let auth_routes = handlers::auth::routes().with_state(auth_service);
     let browsing_routes = handlers::browsing::routes(pool.clone(), song_service);
-    let search_routes = handlers::search::routes().with_state(comm_state);
-    let stream_routes = handlers::stream::routes().with_state(pool.clone());
+    let search_routes = handlers::search::routes().with_state(comm_state.clone());
+    let stream_routes = handlers::stream::routes().with_state(comm_state);
     let playlist_state = handlers::playlist::PlaylistState {
         playlist_service,
         pool: pool.clone(),

@@ -3,14 +3,9 @@
 
 use axum::body::Body;
 use axum::{extract::Query, http::HeaderMap, response::IntoResponse, routing::get, Router};
-use once_cell::sync::Lazy;
 use serde::Deserialize;
-use sqlx::SqlitePool;
-use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::fs::File;
-use tokio::sync::Mutex;
 use tokio_util::io::ReaderStream;
 
 use crate::error::AppError;
@@ -18,13 +13,8 @@ use crate::extractors::Format;
 use crate::middleware::auth_middleware;
 use crate::models::response::{Lyrics, LyricsResponse};
 use crate::response::ApiResponse;
-use crate::utils::image_utils;
-
-// 防止同一封面同一尺寸被多次生成
-// Key: "{cover_art_id}_{size}"
-static CACHE_GENERATION_LOCKS: Lazy<Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>> =
-    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
-
+use crate::services::song_service::CommState;
+use crate::utils::{MetaClient, image_utils};
 
 /// 流媒体参数
 #[derive(Debug, Deserialize)]
@@ -68,15 +58,15 @@ pub struct CoverArtParams {
 
 /// GET /rest/stream - 流式播放音乐
 pub async fn stream(
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<CommState>,
     Query(params): Query<StreamParams>,
 ) -> Result<impl IntoResponse, AppError> {
     // 根据ID查询歌曲信息
     let song = sqlx::query_as::<_, (String, Option<String>)>(
-        "SELECT file_path, content_type FROM songs WHERE id = ?"
+        "SELECT file_path, content_type FROM songs WHERE id = ?",
     )
     .bind(&params.id)
-    .fetch_optional(&*pool)
+    .fetch_optional(&*state.pool)
     .await?;
 
     let (file_path_str, content_type) = song.ok_or_else(|| AppError::not_found("Song"))?;
@@ -99,8 +89,7 @@ pub async fn stream(
 
     // 设置响应头
     let mut headers = HeaderMap::new();
-    let content_type = content_type
-        .unwrap_or_else(|| "audio/mpeg".to_string());
+    let content_type = content_type.unwrap_or_else(|| "audio/mpeg".to_string());
     headers.insert("Content-Type", content_type.parse().unwrap());
     headers.insert("Accept-Ranges", "bytes".parse().unwrap());
 
@@ -120,11 +109,11 @@ pub async fn stream(
 /// GET /rest/download - 下载音乐文件
 pub async fn download(
     claims: auth_middleware::Claims,
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<CommState>,
     Query(params): Query<DownloadParams>,
 ) -> Result<impl IntoResponse, AppError> {
     // 检查下载权限
-    let permissions = auth_middleware::get_user_permissions(&pool, &claims.sub)
+    let permissions = auth_middleware::get_user_permissions(&state.pool, &claims.sub)
         .await
         .map_err(|_| AppError::access_denied("Failed to check permissions"))?;
 
@@ -133,12 +122,11 @@ pub async fn download(
     }
 
     // 根据ID查询歌曲信息
-    let song = sqlx::query_as::<_, (String, String)>(
-        "SELECT file_path, title FROM songs WHERE id = ?"
-    )
-    .bind(&params.id)
-    .fetch_optional(&*pool)
-    .await?;
+    let song =
+        sqlx::query_as::<_, (String, String)>("SELECT file_path, title FROM songs WHERE id = ?")
+            .bind(&params.id)
+            .fetch_optional(&*state.pool)
+            .await?;
 
     let (file_path_str, title) = song.ok_or_else(|| AppError::not_found("Song"))?;
 
@@ -173,104 +161,91 @@ pub async fn download(
 
 /// GET /rest/getCoverArt - 获取封面图片
 pub async fn get_cover_art(
+    axum::extract::State(state): axum::extract::State<CommState>,
     Query(params): Query<CoverArtParams>,
 ) -> Result<impl IntoResponse, AppError> {
     let cover_art_id = &params.id;
+
+    // 兼容这种格式 al-ce60a8a2-a40f-43ef-ad26-55051da8999f，提取出 al-ce60a8a2
+    let mut empy_id = cover_art_id.is_empty();
+    let cover_art_id = if cover_art_id.starts_with("al-") && cover_art_id.len() > 11 {
+        tracing::warn!("Cover art format need update: {}", cover_art_id);
+        empy_id = cover_art_id.trim().is_empty();
+        &format!("al-{}", cover_art_id.split('-').nth(1).unwrap_or_default()) // 取第二个元素
+    } else {
+        cover_art_id
+    };
+
+    if empy_id { // 返回默认数据
+         return image_utils::serve_image_file(PathBuf::from("./web/default_cover.webp")).await;
+    }
+
     let size = params.size.unwrap_or(300).max(50).min(2000) as u32;
 
     // 1. 检查缓存
     let cache_path = image_utils::get_webp_cache_path(cover_art_id, size);
     if cache_path.exists() {
-        return serve_image_file(cache_path).await;
+        return image_utils::serve_image_file(cache_path).await;
     }
 
     // 2. 查找原图
-    let original_path = image_utils::get_original_image_path(cover_art_id)
-        .ok_or_else(|| AppError::not_found("Cover art original image"))?;
+    match image_utils::get_original_image_path(cover_art_id) {
+        Some(path) => image_utils::prewarm_cover_from_original(cover_art_id, size, &path).await?,
+        None => {
+            // 3. 原图不存在，尝试从网络获取
+            // 3.1 从数据库查询专辑名称作为搜索关键词
+            let album_name = if cover_art_id.starts_with("al-") {
+                sqlx::query_as::<_, (String,)>("SELECT name FROM albums WHERE cover_art_path = ?")
+                    .bind(cover_art_id)
+                    .fetch_optional(&*state.pool)
+                    .await?
+                    .map(|(name,)| name)
+            } else {
+                None
+            };
 
-    // 3. 获取生成锁
-    let lock_key = format!("{}_{}", cover_art_id, size);
-    let generation_lock = {
-        let mut locks = CACHE_GENERATION_LOCKS.lock().await;
-        locks
-            .entry(lock_key.clone())
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
-    };
+            if let Some(keyword) = album_name {
+                tracing::info!("Fetching cover from network for album: {}", keyword);
 
-    let _guard = generation_lock.lock().await;
+                // 3.2 从酷狗获取封面图片
+                let response = MetaClient::new()
+                    .get_kugou_cover_stream(&keyword)
+                    .await
+                    .map_err(|e| AppError::NotFound(format!("Failed to fetch cover: {}", e)))?;
 
-    // 4. 双重检查缓存
-    if cache_path.exists() {
-        return serve_image_file(cache_path).await;
+                // 3.3 读取响应字节流
+                let bytes = response
+                    .bytes()
+                    .await
+                    .map_err(|e| AppError::IoError(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to read response bytes: {}", e)
+                    )))?;
+
+                // 3.4 缓存到本地 ./coverArt/originals/{cover_art_id}.jpg
+                let originals_dir = PathBuf::from("./coverArt/originals");
+                if !originals_dir.exists() {
+                    std::fs::create_dir_all(&originals_dir)
+                        .map_err(|e| AppError::IoError(e))?;
+                }
+
+                let original_path = originals_dir.join(format!("{}.jpg", cover_art_id));
+                tokio::fs::write(&original_path, &bytes)
+                    .await
+                    .map_err(|e| AppError::IoError(e))?;
+
+                tracing::info!("save original cover to: {}", original_path.display());
+
+                // 3.5 生成 WebP 缓存
+                image_utils::prewarm_cover_from_original(cover_art_id, size, &original_path).await?;
+            } else {
+                return Err(AppError::not_found("Album not found for cover art"));
+            }
+        },
     }
 
-    // 5. 创建缓存目录
-    let webp_dir = PathBuf::from("./coverArt/webp");
-    if !webp_dir.exists() {
-        std::fs::create_dir_all(&webp_dir).map_err(|e| AppError::IoError(e))?;
-    }
-
-    // 6. 生成 WebP 缓存（spawn_blocking 避免阻塞）
-    let original_path_clone = original_path.clone();
-    let cache_path_clone = cache_path.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut config = image_utils::WebPConfig::default();
-        if size > 300 {
-            config.quality = 75.0; // 默认 50，超过默认尺寸的图片用 75 质量
-        }
-        tracing::info!("Generating WebP cache: {} -> {}", original_path_clone.display(), cache_path_clone.display());
-        image_utils::resize_and_convert_to_webp(
-            &original_path_clone,
-            &cache_path_clone,
-            size,
-            &config,
-        )
-    })
-    .await
-    .map_err(|e| {
-        AppError::IoError(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Task join error: {}", e),
-        ))
-    })?
-    .map_err(|e| {
-        tracing::error!("Failed to generate WebP cache: {}", e);
-        AppError::IoError(e)
-    })?;
-
-    // 7. 返回生成的缓存
-    serve_image_file(cache_path).await
-}
-
-/// 服务图片文件
-async fn serve_image_file(file_path: PathBuf) -> Result<impl IntoResponse, AppError> {
-    let file = File::open(&file_path)
-        .await
-        .map_err(|e| AppError::IoError(e))?;
-
-    let stream = ReaderStream::new(file);
-    let body = Body::from_stream(stream);
-
-    // 根据文件扩展名确定 Content-Type
-    let ext = file_path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-
-    let content_type = match ext.as_str() {
-        "jpg" | "jpeg" => "image/jpeg",
-        "png" => "image/png",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        _ => "application/octet-stream",
-    };
-
-    let mut headers = HeaderMap::new();
-    headers.insert("Content-Type", content_type.parse().unwrap());
-
-    Ok((headers, body).into_response())
+    // 4. 统一通过 serve_image_file 返回
+    image_utils::serve_image_file(cache_path).await
 }
 
 /// 歌词查询参数
@@ -290,7 +265,7 @@ pub struct LyricsParams {
 /// GET /rest/getLyrics - 获取歌词
 pub async fn get_lyrics(
     Format(format): Format,
-    axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
+    axum::extract::State(state): axum::extract::State<CommState>,
     Query(params): Query<LyricsParams>,
 ) -> Result<ApiResponse<LyricsResponse>, AppError> {
     // 构建查询条件
@@ -306,7 +281,7 @@ pub async fn get_lyrics(
         )
         .bind(format!("%{}%", title))
         .bind(format!("%{}%", artist))
-        .fetch_optional(&*pool)
+        .fetch_optional(&*state.pool)
         .await?
     } else if let Some(title) = params.title.as_ref() {
         // 只有标题
@@ -317,7 +292,7 @@ pub async fn get_lyrics(
              LIMIT 1",
         )
         .bind(format!("%{}%", title))
-        .fetch_optional(&*pool)
+        .fetch_optional(&*state.pool)
         .await?
     } else if let Some(artist) = params.artist.as_ref() {
         // 只有艺术家
@@ -329,7 +304,7 @@ pub async fn get_lyrics(
              LIMIT 1",
         )
         .bind(format!("%{}%", artist))
-        .fetch_optional(&*pool)
+        .fetch_optional(&*state.pool)
         .await?
     } else {
         None
@@ -337,11 +312,9 @@ pub async fn get_lyrics(
 
     // 如果找到歌曲，查询艺术家名称并返回歌词
     if let Some((lyrics, artist_id, title)) = song {
-        let artist_name = sqlx::query_as::<_, (String,)>(
-            "SELECT name FROM artists WHERE id = ?"
-        )
+        let artist_name = sqlx::query_as::<_, (String,)>("SELECT name FROM artists WHERE id = ?")
             .bind(&artist_id)
-            .fetch_optional(&*pool)
+            .fetch_optional(&*state.pool)
             .await?
             .map(|(name,)| name);
 
@@ -368,16 +341,13 @@ pub async fn get_lyrics(
 }
 
 /// GET /rest/getAvatar - 获取用户头像
-pub async fn get_avatar(
-    axum::extract::State(_pool): axum::extract::State<Arc<SqlitePool>>,
-    _params: Query<DownloadParams>,
-) -> Result<(HeaderMap, Vec<u8>), AppError> {
+pub async fn get_avatar(_params: Query<DownloadParams>) -> Result<(HeaderMap, Vec<u8>), AppError> {
     // 简化处理：返回默认头像或 404
     // 实际应用中应该从用户表查询头像路径
     Err(AppError::not_found("Avatar"))
 }
 
-pub fn routes() -> Router<Arc<SqlitePool>> {
+pub fn routes() -> Router<CommState> {
     Router::new()
         .route("/rest/stream", get(stream))
         .route("/rest/download", get(download))
