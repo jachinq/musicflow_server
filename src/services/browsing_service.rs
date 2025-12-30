@@ -8,8 +8,9 @@
 #![allow(dead_code)]
 
 use crate::error::AppError;
-use crate::models::dto::{AlbumDetailDto, ArtistDto, SongDetailDto};
+use crate::models::dto::{AlbumDetailDto, ArtistDetailDto, ArtistDto, SongDetailDto};
 use crate::services::ServiceContext;
+use crate::utils::sql_utils;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -17,9 +18,10 @@ use std::sync::Arc;
 pub type GenreInfo = (String, i32, i32);
 
 /// 专辑列表排序类型
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum AlbumListType {
     Random,
+    #[default]
     Newest,
     Highest,
     Frequent,
@@ -161,16 +163,10 @@ impl BrowsingService {
         }
 
         let query = format!(
-            "SELECT s.id, s.title, ar.name as artist, al.name as album,
-                    s.duration, s.bit_rate, s.track, s.disc_number, al.year,
-                    al.genre, s.size, s.suffix, s.content_type, s.path,
-                    s.play_count, s.artist_id, s.album_id, al.cover_art_path
-             FROM songs s
-             JOIN albums al ON s.album_id = al.id
-             JOIN artists ar ON s.artist_id = ar.id
-             WHERE {}
+            "{} WHERE {}
              ORDER BY RANDOM()
              LIMIT ?",
+            sql_utils::detail_sql(),
             conditions.join(" AND ")
         );
 
@@ -193,18 +189,12 @@ impl BrowsingService {
         artist_name: &str,
         count: i32,
     ) -> Result<Vec<SongDetailDto>, AppError> {
-        let songs = sqlx::query_as::<_, SongDetailDto>(
-            "SELECT s.id, s.title, ar.name as artist, al.name as album,
-                    s.duration, s.bit_rate, s.track, s.disc_number, al.year,
-                    al.genre, s.size, s.suffix, s.content_type, s.path,
-                    s.play_count, s.artist_id, s.album_id, al.cover_art_path
-             FROM songs s
-             JOIN albums al ON s.album_id = al.id
-             JOIN artists ar ON s.artist_id = ar.id
-             WHERE ar.name = ?
+        let songs = sqlx::query_as::<_, SongDetailDto>(&format!(
+            "{} WHERE ar.name = ?
              ORDER BY s.play_count DESC
              LIMIT ?",
-        )
+            sql_utils::detail_sql()
+        ))
         .bind(artist_name)
         .bind(count)
         .fetch_all(&self.ctx.pool)
@@ -226,18 +216,12 @@ impl BrowsingService {
         count: i32,
         offset: i32,
     ) -> Result<Vec<SongDetailDto>, AppError> {
-        let songs = sqlx::query_as::<_, SongDetailDto>(
-            "SELECT s.id, s.title, ar.name as artist, al.name as album,
-                    s.duration, s.bit_rate, s.track, s.disc_number, al.year,
-                    al.genre, s.size, s.suffix, s.content_type, s.path,
-                    s.play_count, s.artist_id, s.album_id, al.cover_art_path
-             FROM songs s
-             JOIN albums al ON s.album_id = al.id
-             JOIN artists ar ON s.artist_id = ar.id
-             WHERE al.genre = ?
-             ORDER BY ar.name ASC, al.name ASC, s.track ASC
+        let songs = sqlx::query_as::<_, SongDetailDto>(&format!(
+            "{} WHERE s.genre = ?
+             ORDER BY ar.name ASC, al.name ASC
              LIMIT ? OFFSET ?",
-        )
+            sql_utils::detail_sql()
+        ))
         .bind(genre)
         .bind(count)
         .bind(offset)
@@ -268,11 +252,10 @@ impl BrowsingService {
     ///
     /// 按字母分组的艺术家列表
     pub async fn get_artist_indexes(&self) -> Result<Vec<ArtistDto>, AppError> {
-        let artists = sqlx::query_as::<_, ArtistDto>(
-            "SELECT id, name FROM artists ORDER BY name ASC",
-        )
-        .fetch_all(&self.ctx.pool)
-        .await?;
+        let artists =
+            sqlx::query_as::<_, ArtistDto>("SELECT id, name FROM artists ORDER BY name ASC")
+                .fetch_all(&self.ctx.pool)
+                .await?;
 
         Ok(artists)
     }
@@ -285,13 +268,15 @@ impl BrowsingService {
     pub async fn get_artist(
         &self,
         artist_id: &str,
-    ) -> Result<(ArtistDto, Vec<AlbumDetailDto>), AppError> {
+    ) -> Result<(ArtistDetailDto, Vec<AlbumDetailDto>), AppError> {
         // 获取艺术家信息
-        let artist = sqlx::query_as::<_, ArtistDto>("SELECT id, name FROM artists WHERE id = ?")
-            .bind(artist_id)
-            .fetch_optional(&self.ctx.pool)
-            .await?
-            .ok_or_else(|| AppError::not_found("Artist"))?;
+        let artist = sqlx::query_as::<_, ArtistDetailDto>(
+            "SELECT id, name, cover_art_path FROM artists WHERE id = ?",
+        )
+        .bind(artist_id)
+        .fetch_optional(&self.ctx.pool)
+        .await?
+        .ok_or_else(|| AppError::not_found("Artist"))?;
 
         // 获取艺术家的专辑
         let albums = sqlx::query_as::<_, AlbumDetailDto>(
@@ -332,17 +317,12 @@ impl BrowsingService {
         .ok_or_else(|| AppError::not_found("Album"))?;
 
         // 获取专辑的歌曲
-        let songs = sqlx::query_as::<_, SongDetailDto>(
-            "SELECT s.id, s.title, ar.name as artist, al.name as album,
-                    s.duration, s.bit_rate, s.track, s.disc_number, al.year,
-                    al.genre, s.size, s.suffix, s.content_type, s.path,
-                    s.play_count, s.artist_id, s.album_id, al.cover_art_path
-             FROM songs s
-             JOIN albums al ON s.album_id = al.id
-             JOIN artists ar ON s.artist_id = ar.id
+        let songs = sqlx::query_as::<_, SongDetailDto>(&format!(
+            "{}
              WHERE s.album_id = ?
-             ORDER BY s.disc_number ASC, s.track ASC",
-        )
+             ORDER BY s.disc_number ASC, s.track_number ASC",
+            sql_utils::detail_sql()
+        ))
         .bind(album_id)
         .fetch_all(&self.ctx.pool)
         .await?;
@@ -356,16 +336,10 @@ impl BrowsingService {
     ///
     /// * `song_id` - 歌曲 ID
     pub async fn get_song(&self, song_id: &str) -> Result<SongDetailDto, AppError> {
-        let song = sqlx::query_as::<_, SongDetailDto>(
-            "SELECT s.id, s.title, ar.name as artist, al.name as album,
-                    s.duration, s.bit_rate, s.track, s.disc_number, al.year,
-                    al.genre, s.size, s.suffix, s.content_type, s.path,
-                    s.play_count, s.artist_id, s.album_id, al.cover_art_path
-             FROM songs s
-             JOIN albums al ON s.album_id = al.id
-             JOIN artists ar ON s.artist_id = ar.id
-             WHERE s.id = ?",
-        )
+        let song = sqlx::query_as::<_, SongDetailDto>(&format!(
+            "{} WHERE s.id = ?",
+            sql_utils::detail_sql()
+        ))
         .bind(song_id)
         .fetch_optional(&self.ctx.pool)
         .await?
@@ -535,10 +509,7 @@ mod tests {
         let pool = setup_test_db().await;
         let service = create_service(pool);
 
-        let songs = service
-            .get_top_songs("Test Artist", 10)
-            .await
-            .unwrap();
+        let songs = service.get_top_songs("Test Artist", 10).await.unwrap();
 
         assert_eq!(songs.len(), 2);
         // 播放次数高的在前面
@@ -585,6 +556,8 @@ mod tests {
         let service = create_service(pool);
 
         let genres = service.get_genres().await.unwrap();
+
+        println!("genres: {:?}", genres);
 
         assert!(genres.len() >= 1);
         // 应该有 Rock 流派

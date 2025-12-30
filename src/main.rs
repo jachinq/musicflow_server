@@ -2,7 +2,7 @@
 //!
 //! Subsonic API 兼容的音乐流媒体服务器
 
-use crate::services::{song_service::CommState, SongService};
+use crate::services::{song_service::CommState, BrowsingService};
 use axum::{middleware as axum_middleware, Router};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -23,7 +23,8 @@ mod utils;
 use config::AppConfig;
 use database::{get_db_pool, run_migrations, DbPool};
 use services::{
-    AuthService, LibraryService, PlaylistService, ScanService, ServiceContext, UserService,
+    AuthService, LibraryService, PlaylistService, ScanService, SearchService, ServiceContext,
+    UserService,
 };
 
 #[tokio::main]
@@ -89,25 +90,23 @@ fn build_app(pool: DbPool, config: AppConfig) -> Router {
         pool.clone(),
         config.music_library_path.clone(),
     ));
-    let song_service = Arc::new(SongService::new(pool.clone()));
     let library_service = Arc::new(LibraryService::new(service_ctx.clone()));
     let user_service = Arc::new(UserService::new(service_ctx.clone(), auth_service.clone()));
     let playlist_service = Arc::new(PlaylistService::new(service_ctx.clone()));
+    let browsing_service = Arc::new(BrowsingService::new(service_ctx.clone()));
+    let search_service = Arc::new(SearchService::new(service_ctx.clone()));
 
     // 创建共享状态
     let _auth_state = auth_service.clone();
 
     let pool = Arc::new(pool);
-    let comm_state = CommState {
-        pool: pool.clone(),
-        song_service: song_service.clone(),
-    };
+    let comm_state = CommState { pool: pool.clone() };
 
     // 构建各个模块的路由
     let system_routes = handlers::system::routes();
     let auth_routes = handlers::auth::routes().with_state(auth_service);
-    let browsing_routes = handlers::browsing::routes(pool.clone(), song_service);
-    let search_routes = handlers::search::routes().with_state(comm_state.clone());
+    let browsing_routes = handlers::browsing::routes(pool.clone(), browsing_service);
+    let search_routes = handlers::search::routes().with_state(search_service.clone());
     let stream_routes = handlers::stream::routes().with_state(comm_state);
     let playlist_state = handlers::playlist::PlaylistState {
         playlist_service,

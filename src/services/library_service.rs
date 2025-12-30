@@ -53,7 +53,7 @@ impl LibraryService {
     /// 此方法使用事务确保:
     /// 1. scrobble 记录插入
     /// 2. 播放次数更新
-    /// 
+    ///
     /// 两个操作要么全部成功,要么全部回滚
     pub async fn submit_scrobble(
         &self,
@@ -87,6 +87,21 @@ impl LibraryService {
                             .bind(&song_id)
                             .execute(&mut **tx)
                             .await?;
+
+                       // 查询专辑播放次数
+                        let album_id: Option<String> = sqlx::query_scalar("SELECT album_id FROM songs WHERE id = ?")
+                            .bind(&song_id)
+                            .fetch_optional(&mut **tx)
+                            .await?;
+
+                        tracing::info!("Album play count update: {:?}", album_id);
+                        if let Some(album_id) = album_id {
+                            sqlx::query("UPDATE albums SET play_count = play_count + 1 WHERE id = ?",)
+                                .bind(&album_id)
+                                .execute(&mut **tx)
+                                .await?;
+                        }
+
                     }
 
                     Ok(())
@@ -182,9 +197,7 @@ impl LibraryService {
         rating: i32,
     ) -> Result<(), AppError> {
         if !(1..=5).contains(&rating) {
-            return Err(AppError::validation_error(
-                "Rating must be between 1 and 5",
-            ));
+            return Err(AppError::validation_error("Rating must be between 1 and 5"));
         }
 
         sqlx::query(
@@ -211,11 +224,7 @@ impl LibraryService {
     /// # 返回
     ///
     /// 返回评分值,如果未评分则返回 None
-    pub async fn get_rating(
-        &self,
-        user_id: &str,
-        item_id: &str,
-    ) -> Result<Option<i32>, AppError> {
+    pub async fn get_rating(&self, user_id: &str, item_id: &str) -> Result<Option<i32>, AppError> {
         let rating = sqlx::query_scalar::<_, i32>(
             "SELECT rating FROM ratings WHERE user_id = ? AND song_id = ?",
         )

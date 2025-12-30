@@ -16,5 +16,5 @@ pub struct ArtistDetailDto {
     pub id: String,
     pub name: String,
     pub cover_art_path: Option<String>,
-    pub album_count: i32,
+    pub album_count: Option<i32>,
 }

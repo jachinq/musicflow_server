@@ -3,19 +3,19 @@
 
 use crate::error::AppError;
 use crate::extractors::Format;
-use crate::models::dto::{ArtistDto, SongDetailDto, AlbumDetailDto};
 use crate::models::response::{
     AlbumDetail, AlbumDetailResponse, AlbumList2, AlbumList2Response, AlbumResponse, ArtistDetail,
     ArtistDetailResponse, ArtistIndex, ArtistResponse, Artists, ArtistsResponse, Directory, Genre,
-    Genres, GenresResponse, Index, Indexes, RandomSongs, RandomSongsResponse,
-    Song, SongResponse, SongsByGenreResponse, SongsResponse, TopSongs,
-    TopSongsResponse,
+    Genres, GenresResponse, Index, Indexes, RandomSongs, RandomSongsResponse, Song, SongResponse,
+    SongsByGenreResponse, SongsResponse, TopSongs, TopSongsResponse,
 };
 use crate::response::ApiResponse;
-use crate::services::SongService;
+use crate::services::browsing_service::AlbumListType;
+use crate::services::BrowsingService;
 use axum::{extract::Query, routing::get, Router};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 
 /// 获取艺术家列表参数
@@ -61,28 +61,25 @@ pub async fn get_indexes(
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(_params): Query<GetIndexesParams>,
 ) -> Result<ApiResponse<Indexes>, AppError> {
-    // 查询所有艺术家
-    let artists =
-        sqlx::query_as::<_, (String, String)>("SELECT id, name FROM artists ORDER BY name")
-            .fetch_all(&*state.pool)
-            .await?;
+    let artists = state.browseing_service.get_artist_indexes().await?;
 
     // 按首字母分组
     let mut index_map: std::collections::HashMap<String, Vec<ArtistResponse>> =
         std::collections::HashMap::new();
 
-    for (id, name) in artists {
-        let first_char = name
+    for artist in artists {
+        let first_char = artist
+            .name
             .chars()
             .next()
             .unwrap_or('#')
             .to_uppercase()
             .to_string();
         let artist = ArtistResponse {
-            id,
-            name: name.clone(),
+            id: artist.id,
+            name: artist.name,
             cover_art: None,
-            album_count: Some(0), // 这里可以查询专辑数量
+            album_count: Some(0), // TODO 这里可以查询专辑数量
         };
         index_map.entry(first_char).or_default().push(artist);
     }
@@ -203,9 +200,7 @@ pub async fn get_artists(
     Query(_params): Query<GetArtistsParams>,
 ) -> Result<ApiResponse<ArtistsResponse>, AppError> {
     // 查询艺术家信息
-    let artist = sqlx::query_as::<_, ArtistDto>("SELECT id, name, cover_art_path FROM artists")
-        .fetch_all(&*state.pool)
-        .await?;
+    let artist = state.browseing_service.get_artist_indexes().await?;
 
     let mut index_map: HashMap<String, Vec<ArtistResponse>> = HashMap::new();
     artist.into_iter().for_each(|a| {
@@ -247,47 +242,15 @@ pub async fn get_artist(
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetArtistParams>,
 ) -> Result<ApiResponse<ArtistDetailResponse>, AppError> {
-    // 查询艺术家信息
-    let artist = sqlx::query_as::<_, (String, String, Option<String>)>(
-        "SELECT id, name, cover_art_path FROM artists WHERE id = ?",
-    )
-    .bind(&params.id)
-    .fetch_optional(&*state.pool)
-    .await?
-    .ok_or_else(|| AppError::not_found("ArtistResponse"))?;
-
-    // 查询专辑列表
-    let albums = sqlx::query_as::<_, (String, String, Option<i32>, Option<i32>)>(
-        "SELECT id, name, year, song_count FROM albums WHERE artist_id = ? ORDER BY year, name",
-    )
-    .bind(&artist.0)
-    .fetch_all(&*state.pool)
-    .await?;
-
-    let album_list = albums
-        .into_iter()
-        .map(|(id, name, year, song_count)| AlbumResponse {
-            id,
-            name,
-            artist: artist.1.clone(),
-            artist_id: Some(artist.0.clone()),
-            year,
-            cover_art: None,
-            song_count,
-            created: None,
-            duration: None,
-            play_count: None,
-            genre: None,
-        })
-        .collect::<Vec<_>>();
+    let (artist, album_list) = state.browseing_service.get_artist(&params.id).await?;
 
     let result = ArtistDetailResponse {
         artist: ArtistDetail {
-            id: artist.0,
-            name: artist.1,
-            cover_art: artist.2,
+            id: artist.id,
+            name: artist.name,
+            cover_art: artist.cover_art_path,
             album_count: album_list.len() as i32,
-            album: album_list,
+            album: AlbumResponse::from_dto_details(album_list),
         },
     };
 
@@ -300,38 +263,12 @@ pub async fn get_album(
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetAlbumParams>,
 ) -> Result<ApiResponse<AlbumDetailResponse>, AppError> {
-    // 查询专辑信息
-    let album = sqlx::query_as::<_, AlbumDetailDto>(
-        "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
-                    a.cover_art_path, a.song_count, a.duration, a.play_count
-             FROM albums a
-             JOIN artists ar ON a.artist_id = ar.id
-             Where a.id = ?
-             ORDER BY a.created_at DESC",
-    )
-    .bind(&params.id)
-    .fetch_optional(&*state.pool)
-    .await?
-    .ok_or_else(|| AppError::not_found("Album"))?;
-
-    // 查询歌曲列表
-    let songs = sqlx::query_as::<_, SongDetailDto>(&format!(
-        "{} WHERE al.id = ? ORDER BY disc_number, track_number",
-        state.song_service.detail_sql()
-    ))
-    .bind(&album.id)
-    .fetch_all(&*state.pool)
-    .await?;
-
+    let (album, songs) = state.browseing_service.get_album(&params.id).await?;
     // 计算总时长
     let total_duration: i32 = songs.iter().map(|s| s.duration).sum();
-
     // tracing::info!("al = {:?}", album);
 
-    let song_list = songs
-        .into_iter()
-        .map(|s| s.into())
-        .collect();
+    let song_list = songs.into_iter().map(|s| s.into()).collect();
 
     let result = AlbumDetailResponse {
         album: AlbumDetail {
@@ -356,14 +293,7 @@ pub async fn get_song(
     Query(params): Query<GetSongParams>,
 ) -> Result<ApiResponse<SongResponse>, AppError> {
     // 查询歌曲信息
-    let song = sqlx::query_as::<_, SongDetailDto>(&format!(
-        "{} WHERE s.id = ?",
-        state.song_service.detail_sql()
-    ))
-    .bind(&params.id)
-    .fetch_optional(&*state.pool)
-    .await?
-    .ok_or_else(|| AppError::not_found("SongResponse"))?;
+    let song = state.browseing_service.get_song(&params.id).await?;
 
     let result = SongResponse { song: song.into() };
 
@@ -400,144 +330,21 @@ pub struct GetArtistInfoParams {
     pub include_not_present: Option<bool>,
 }
 
-/// GET /rest/getAlbumList - 获取专辑列表
-pub async fn get_album_list(
-    Format(format): Format,
-    axum::extract::State(state): axum::extract::State<BrowsingState>,
-    Query(params): Query<GetAlbumListParams>,
-) -> Result<ApiResponse<crate::models::response::AlbumList>, AppError> {
-    use crate::models::dto::AlbumDetailDto;
-
-    let size = params.size.unwrap_or(10).min(500); // 限制最大500
-    let offset = params.offset.unwrap_or(0);
-
-    let query = match params.r#type.as_str() {
-        "random" => {
-            "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
-                    a.cover_art_path, a.song_count, a.duration, a.play_count
-             FROM albums a
-             JOIN artists ar ON a.artist_id = ar.id
-             ORDER BY RANDOM()
-             LIMIT ? OFFSET ?"
-        }
-        "newest" => {
-            "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
-                    a.cover_art_path, a.song_count, a.duration, a.play_count
-             FROM albums a
-             JOIN artists ar ON a.artist_id = ar.id
-             ORDER BY a.created_at DESC
-             LIMIT ? OFFSET ?"
-        }
-        "highest" => {
-            "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
-                    a.cover_art_path, a.song_count, a.duration, a.play_count
-             FROM albums a
-             JOIN artists ar ON a.artist_id = ar.id
-             ORDER BY a.play_count DESC
-             LIMIT ? OFFSET ?"
-        }
-        "frequent" => {
-            "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
-                    a.cover_art_path, a.song_count, a.duration, a.play_count
-             FROM albums a
-             JOIN artists ar ON a.artist_id = ar.id
-             ORDER BY a.play_count DESC
-             LIMIT ? OFFSET ?"
-        }
-        "recent" => {
-            "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
-                    a.cover_art_path, a.song_count, a.duration, a.play_count
-             FROM albums a
-             JOIN artists ar ON a.artist_id = ar.id
-             ORDER BY a.updated_at DESC
-             LIMIT ? OFFSET ?"
-        }
-        "alphabetical" | "alphabeticalByName" => {
-            "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
-                    a.cover_art_path, a.song_count, a.duration, a.play_count
-             FROM albums a
-             JOIN artists ar ON a.artist_id = ar.id
-             ORDER BY a.name ASC
-             LIMIT ? OFFSET ?"
-        }
-        "alphabeticalByArtist" => {
-            "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
-                    a.cover_art_path, a.song_count, a.duration, a.play_count
-             FROM albums a
-             JOIN artists ar ON a.artist_id = ar.id
-             ORDER BY ar.name ASC, a.name ASC
-             LIMIT ? OFFSET ?"
-        }
-        "byYear" => {
-            "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
-                    a.cover_art_path, a.song_count, a.duration, a.play_count
-             FROM albums a
-             JOIN artists ar ON a.artist_id = ar.id
-             WHERE a.year IS NOT NULL
-             ORDER BY a.year DESC, a.name ASC
-             LIMIT ? OFFSET ?"
-        }
-        "byGenre" => {
-            "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
-                    a.cover_art_path, a.song_count, a.duration, a.play_count
-             FROM albums a
-             JOIN artists ar ON a.artist_id = ar.id
-             WHERE a.genre IS NOT NULL
-             ORDER BY a.genre ASC, a.name ASC
-             LIMIT ? OFFSET ?"
-        }
-        _ => {
-            "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
-                    a.cover_art_path, a.song_count, a.duration, a.play_count
-             FROM albums a
-             JOIN artists ar ON a.artist_id = ar.id
-             ORDER BY a.created_at DESC
-             LIMIT ? OFFSET ?"
-        }
-    };
-
-    let albums = sqlx::query_as::<_, AlbumDetailDto>(query)
-        .bind(size)
-        .bind(offset)
-        .fetch_all(&*state.pool)
-        .await?;
-
-    let album_responses = AlbumResponse::from_dto_details(albums);
-
-    let result = crate::models::response::AlbumList {
-        albums: album_responses,
-    };
-
-    Ok(ApiResponse::ok(Some(result), format))
-}
-
 /// GET /rest/getAlbumList2 - 获取专辑列表 (v2)
 pub async fn get_album_list2(
     Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetAlbumListParams>,
 ) -> Result<ApiResponse<AlbumList2Response>, AppError> {
-    use crate::models::dto::AlbumDetailDto;
-
     let size = params.size.unwrap_or(10).min(500); // 限制最大500
     let offset = params.offset.unwrap_or(0);
-
-    let query = match params.r#type.as_str() {
-        "random" => "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
-                    a.cover_art_path, a.song_count, a.duration, a.play_count
-             FROM albums a JOIN artists ar ON a.artist_id = ar.id ORDER BY RANDOM() LIMIT ? OFFSET ?",
-        "newest" => "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
-                    a.cover_art_path, a.song_count, a.duration, a.play_count
-             FROM albums a JOIN artists ar ON a.artist_id = ar.id ORDER BY a.created_at DESC LIMIT ? OFFSET ?",
-        _ => "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
-                    a.cover_art_path, a.song_count, a.duration, a.play_count
-             FROM albums a JOIN artists ar ON a.artist_id = ar.id ORDER BY a.created_at DESC LIMIT ? OFFSET ?",
-    };
-
-    let albums = sqlx::query_as::<_, AlbumDetailDto>(query)
-        .bind(size)
-        .bind(offset)
-        .fetch_all(&*state.pool)
+    let albums = state
+        .browseing_service
+        .get_album_list(
+            AlbumListType::from_str(&params.r#type).unwrap_or_default(),
+            size,
+            offset,
+        )
         .await?;
 
     let album_responses = AlbumResponse::from_dto_details(albums);
@@ -558,35 +365,16 @@ pub async fn get_random_songs(
     Query(params): Query<GetRandomSongsParams>,
 ) -> Result<ApiResponse<RandomSongsResponse>, AppError> {
     let size = params.size.unwrap_or(10).min(500);
+    let songs = state
+        .browseing_service
+        .get_random_songs(
+            size,
+            params.genre.as_deref(),
+            params.from_year,
+            params.to_year,
+        )
+        .await?;
 
-    let mut query = format!("{} WHERE 1=1", state.song_service.detail_sql());
-
-    let mut bind_values: Vec<String> = Vec::new();
-
-    if let Some(genre) = &params.genre {
-        query.push_str(" AND s.genre = ?");
-        bind_values.push(genre.clone());
-    }
-
-    if let Some(from_year) = params.from_year {
-        query.push_str(" AND s.year >= ?");
-        bind_values.push(from_year.to_string());
-    }
-
-    if let Some(to_year) = params.to_year {
-        query.push_str(" AND s.year <= ?");
-        bind_values.push(to_year.to_string());
-    }
-
-    query.push_str(" ORDER BY RANDOM() LIMIT ?");
-
-    let mut query_builder = sqlx::query_as::<_, SongDetailDto>(&query);
-    for value in &bind_values {
-        query_builder = query_builder.bind(value);
-    }
-    query_builder = query_builder.bind(size);
-
-    let songs = query_builder.fetch_all(&*state.pool).await?;
     let song_responses = Song::from_detail_dtos(songs);
 
     let result = RandomSongsResponse {
@@ -604,6 +392,8 @@ pub async fn get_artist_info(
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetArtistInfoParams>,
 ) -> Result<ApiResponse<crate::models::response::ArtistInfo>, AppError> {
+    // let artist = state.browseing_service.get_artist_info(&params.id, params.count, params.include_not_present).await?;
+
     // 查询艺术家基本信息
     let artist = sqlx::query_as::<_, (String, Option<String>)>(
         "SELECT name, music_brainz_id FROM artists WHERE id = ?",
@@ -660,39 +450,8 @@ pub async fn get_top_songs(
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetTopSongsParams>,
 ) -> Result<ApiResponse<TopSongsResponse>, AppError> {
-    use crate::models::dto::SongDetailDto;
-
-    let count = params.count.unwrap_or(50).max(5000); // 默认50首，最多5000首
-
-    // 根据艺术家名字查询艺术家ID
-    let artist = sqlx::query_as::<_, (String,)>("SELECT id FROM artists WHERE name = ?")
-        .bind(&params.artist)
-        .fetch_optional(&*state.pool)
-        .await?;
-
-    let artist_id = match artist {
-        Some((id,)) => id,
-        None => {
-            // 艺术家不存在，返回空列表
-            return Ok(ApiResponse::ok(
-                Some(TopSongsResponse {
-                    top_songs: TopSongs { song: vec![] },
-                }),
-                format,
-            ));
-        }
-    };
-
-    // 查询该艺术家的热门歌曲（按播放次数排序）
-    let songs = sqlx::query_as::<_, SongDetailDto>(&format!(
-        "{} WHERE s.artist_id = ? ORDER BY s.play_count DESC, s.title ASC LIMIT ?",
-        state.song_service.detail_sql()
-    ))
-    .bind(&artist_id)
-    .bind(count)
-    .fetch_all(&*state.pool)
-    .await?;
-
+    let count = params.count.unwrap_or(50).min(5000); // 默认50首，最多5000首
+    let songs = state.browseing_service.get_top_songs(&params.artist, count).await?;
     let song_responses: Vec<Song> = songs.into_iter().map(|dto| dto.into()).collect();
 
     let result = TopSongsResponse {
@@ -710,22 +469,10 @@ pub async fn get_songs_by_genre(
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetSongsByGenreParams>,
 ) -> Result<ApiResponse<SongsByGenreResponse>, AppError> {
-    use crate::models::dto::SongDetailDto;
-
     let count = params.count.unwrap_or(10).min(500); // 默认10首，最多500首
     let offset = params.offset.unwrap_or(0);
 
-    // 查询指定流派的歌曲
-    let songs = sqlx::query_as::<_, SongDetailDto>(&format!(
-        "{} WHERE s.genre = ? ORDER BY s.title ASC LIMIT ? OFFSET ?",
-        state.song_service.detail_sql()
-    ))
-    .bind(&params.genre)
-    .bind(count)
-    .bind(offset)
-    .fetch_all(&*state.pool)
-    .await?;
-
+    let songs = state.browseing_service.get_songs_by_genre(&params.genre, count, offset).await?;
     let song_responses: Vec<Song> = songs.into_iter().map(|dto| dto.into()).collect();
 
     let result = SongsByGenreResponse {
@@ -743,19 +490,7 @@ pub async fn get_genres(
     axum::extract::State(state): axum::extract::State<BrowsingState>,
 ) -> Result<ApiResponse<GenresResponse>, AppError> {
     // 从歌曲和专辑中统计流派及其计数
-    let genres = sqlx::query_as::<_, (String, i32, i32)>(
-        "SELECT
-            COALESCE(s.genre, a.genre) as genre,
-            COUNT(DISTINCT s.id) as song_count,
-            COUNT(DISTINCT a.id) as album_count
-         FROM songs s
-         LEFT JOIN albums a ON s.album_id = a.id
-         WHERE COALESCE(s.genre, a.genre) IS NOT NULL
-         GROUP BY COALESCE(s.genre, a.genre)
-         ORDER BY COALESCE(s.genre, a.genre)",
-    )
-    .fetch_all(&*state.pool)
-    .await?;
+    let genres = state.browseing_service.get_genres().await?;
 
     let genre_list: Vec<Genre> = genres
         .into_iter()
@@ -777,13 +512,16 @@ pub async fn get_genres(
 #[derive(Clone)]
 pub struct BrowsingState {
     pub pool: Arc<sqlx::SqlitePool>,
-    pub song_service: Arc<SongService>,
+    pub browseing_service: Arc<BrowsingService>,
 }
 
-pub fn routes(pool: Arc<sqlx::SqlitePool>, song_service: Arc<SongService>) -> Router {
+pub fn routes(
+    pool: Arc<sqlx::SqlitePool>,
+    browseing_service: Arc<BrowsingService>,
+) -> Router {
     let browsing_state = BrowsingState {
         pool: pool.clone(),
-        song_service,
+        browseing_service,
     };
 
     Router::new()
@@ -794,7 +532,7 @@ pub fn routes(pool: Arc<sqlx::SqlitePool>, song_service: Arc<SongService>) -> Ro
         .route("/rest/getArtist", get(get_artist))
         .route("/rest/getAlbum", get(get_album))
         .route("/rest/getSong", get(get_song))
-        .route("/rest/getAlbumList", get(get_album_list))
+        .route("/rest/getAlbumList", get(get_album_list2))
         .route("/rest/getAlbumList2", get(get_album_list2))
         .route("/rest/getRandomSongs", get(get_random_songs))
         .route("/rest/getArtistInfo", get(get_artist_info))

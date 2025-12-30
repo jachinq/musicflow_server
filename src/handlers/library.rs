@@ -10,7 +10,7 @@ use crate::response::ApiResponse;
 use crate::services::{LibraryService, ScanService, StarItemType};
 use axum::{
     extract::Query,
-    routing::{get, post},
+    routing::get,
     Router,
 };
 use serde::{Deserialize, Serialize};
@@ -74,7 +74,7 @@ pub struct GetRatingParams {
 #[derive(Debug, Deserialize)]
 pub struct ScrobbleParams {
     pub id: String,
-    pub submission: Option<bool>,
+    pub submission: Option<String>,
     pub time: Option<i64>,
 }
 
@@ -169,7 +169,12 @@ pub async fn scrobble(
     let timestamp = params
         .time
         .unwrap_or_else(|| chrono::Utc::now().timestamp());
-    let submission = params.submission.unwrap_or(true);
+    let submission = params.submission.unwrap_or("True".to_string());
+    let submission = if submission == "True" {
+        true
+    } else {
+        false
+    };
 
     // 调用 Service 层 (带事务保护)
     state
@@ -343,10 +348,10 @@ pub fn routes(
     Router::new()
         .route("/rest/getScanStatus", get(get_scan_status))
         .route("/rest/startScan", get(start_scan))
-        .route("/rest/scrobble", post(scrobble))
-        .route("/rest/star", post(star))
-        .route("/rest/unstar", post(unstar))
-        .route("/rest/setRating", post(set_rating))
+        .route("/rest/scrobble", get(scrobble))
+        .route("/rest/star", get(star))
+        .route("/rest/unstar", get(unstar))
+        .route("/rest/setRating", get(set_rating))
         .route("/rest/getRating", get(get_rating))
         .route("/rest/getStarred", get(get_starred))
         .with_state(library_state)

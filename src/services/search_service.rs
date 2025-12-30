@@ -9,6 +9,7 @@
 use crate::error::AppError;
 use crate::models::dto::{AlbumDetailDto, AlbumDto, ArtistDto, SongDetailDto};
 use crate::services::ServiceContext;
+use crate::utils::sql_utils;
 use std::sync::Arc;
 
 /// 搜索结果
@@ -223,18 +224,12 @@ impl SearchService {
         count: i32,
         offset: i32,
     ) -> Result<Vec<SongDetailDto>, AppError> {
-        let songs = sqlx::query_as::<_, SongDetailDto>(
-            "SELECT s.id, s.title, ar.name as artist, al.name as album,
-                    s.duration, s.bit_rate, s.track, s.disc_number, al.year,
-                    al.genre, s.size, s.suffix, s.content_type, s.path,
-                    s.play_count, s.artist_id, s.album_id, al.cover_art_path
-             FROM songs s
-             JOIN albums al ON s.album_id = al.id
-             JOIN artists ar ON s.artist_id = ar.id
-             WHERE s.title LIKE ? OR al.name LIKE ? OR ar.name LIKE ?
+        let songs = sqlx::query_as::<_, SongDetailDto>(&format!(
+            "{} WHERE s.title LIKE ? OR al.name LIKE ? OR ar.name LIKE ?
              ORDER BY s.title
              LIMIT ? OFFSET ?",
-        )
+            sql_utils::detail_sql()
+        ))
         .bind(format!("%{}%", query))
         .bind(format!("%{}%", query))
         .bind(format!("%{}%", query))
@@ -243,6 +238,7 @@ impl SearchService {
         .fetch_all(&self.ctx.pool)
         .await?;
 
+        tracing::info!("limit {}, offset {}, query={} len={}", count, offset, query, songs.len());
         Ok(songs)
     }
 }
@@ -351,10 +347,7 @@ mod tests {
         let pool = setup_test_db().await;
         let service = create_service(pool);
 
-        let albums = service
-            .search_albums_detailed("Test", 10, 0)
-            .await
-            .unwrap();
+        let albums = service.search_albums_detailed("Test", 10, 0).await.unwrap();
         assert_eq!(albums.len(), 1);
         assert_eq!(albums[0].name, "Test Album");
     }
