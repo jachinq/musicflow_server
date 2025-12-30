@@ -45,7 +45,7 @@ where
         // 1. 优先从查询参数 f 获取 (Subsonic API 标准)
         if let Ok(Query(param)) = Query::<FormatParam>::from_request_parts(parts, state).await {
             if let Some(format_str) = param.format {
-                let format = ResponseFormat::from_str(&format_str);
+                let format = ResponseFormat::parse_str(&format_str);
                 tracing::debug!("Format from query parameter: {:?}", format);
                 return Ok(Format(format));
             }

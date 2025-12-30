@@ -53,6 +53,7 @@ impl LibraryService {
     /// 此方法使用事务确保:
     /// 1. scrobble 记录插入
     /// 2. 播放次数更新
+    /// 
     /// 两个操作要么全部成功,要么全部回滚
     pub async fn submit_scrobble(
         &self,

@@ -69,14 +69,14 @@ impl From<ArtistDetailDto> for ArtistResponse {
 
 impl ArtistResponse {
     pub fn from_entities(entities: Vec<Artist>) -> Vec<Self> {
-        entities.into_iter().map(|entity| Self::from(entity)).collect()
+        entities.into_iter().map(Self::from).collect()
     }
     pub fn from_dtos(dtos: Vec<ArtistDto>) -> Vec<Self> {
-        dtos.into_iter().map(|dto| Self::from(dto)).collect()
+        dtos.into_iter().map(Self::from).collect()
     }
 
     pub fn from_detail_dtos(dtos: Vec<ArtistDetailDto>) -> Vec<Self> {
-        dtos.into_iter().map(|dto| Self::from(dto)).collect()
+        dtos.into_iter().map(Self::from).collect()
     }
 }
 

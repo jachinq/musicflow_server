@@ -69,11 +69,11 @@ impl From<AlbumDetailDto> for AlbumResponse {
 
 impl AlbumResponse {
     pub fn from_dtos(dtos: Vec<AlbumDto>) -> Vec<Self> {
-        dtos.into_iter().map(|dto| AlbumResponse::from(dto)).collect()
+        dtos.into_iter().map(Self::from).collect()
     }
 
     pub fn from_dto_details(dtos: Vec<AlbumDetailDto>) -> Vec<Self> {
-        dtos.into_iter().map(|dto| AlbumResponse::from(dto)).collect()
+        dtos.into_iter().map(Self::from).collect()
     }    
 }
 

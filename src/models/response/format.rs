@@ -1,26 +1,21 @@
 //! 响应格式类型定义
 
 /// 响应格式枚举
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ResponseFormat {
-    /// JSON 格式 (默认)
+    /// JSON 格式
     Json,
-    /// XML 格式
+    /// XML 格式(默认)
+    #[default]
     Xml,
-}
-
-impl Default for ResponseFormat {
-    fn default() -> Self {
-        Self::Xml
-    }
 }
 
 impl ResponseFormat {
     /// 从字符串解析格式
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
-            "xml" => Self::Xml,
-            "json" | _ => Self::Json,
+            "json" => Self::Json,
+            _ => Self::Xml,
         }
     }
 
@@ -39,11 +34,11 @@ mod tests {
 
     #[test]
     fn test_format_from_str() {
-        assert_eq!(ResponseFormat::from_str("json"), ResponseFormat::Json);
-        assert_eq!(ResponseFormat::from_str("JSON"), ResponseFormat::Json);
-        assert_eq!(ResponseFormat::from_str("xml"), ResponseFormat::Xml);
-        assert_eq!(ResponseFormat::from_str("XML"), ResponseFormat::Xml);
-        assert_eq!(ResponseFormat::from_str("unknown"), ResponseFormat::Json);
+        assert_eq!(ResponseFormat::parse_str("json"), ResponseFormat::Json);
+        assert_eq!(ResponseFormat::parse_str("JSON"), ResponseFormat::Json);
+        assert_eq!(ResponseFormat::parse_str("xml"), ResponseFormat::Xml);
+        assert_eq!(ResponseFormat::parse_str("XML"), ResponseFormat::Xml);
+        assert_eq!(ResponseFormat::parse_str("unknown"), ResponseFormat::Json);
     }
 
     #[test]

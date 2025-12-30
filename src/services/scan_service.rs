@@ -4,7 +4,7 @@
 use crate::error::AppError;
 use crate::handlers::library::ScanState;
 use crate::models::entities::{Album, Artist, Song};
-use crate::utils::{AudioMetadata, get_image_format, image_utils, write_image_to_file};
+use crate::utils::{get_image_format, image_utils, write_image_to_file, AudioMetadata};
 use sha2::{Digest, Sha256};
 use sqlx::{Execute, SqlitePool};
 use std::fs::File;
@@ -90,10 +90,7 @@ impl ScanService {
 
             // 获取文件修改时间
             let file_mtime = match std::fs::metadata(&path) {
-                Ok(metadata) => match metadata.modified() {
-                    Ok(time) => Some(time),
-                    Err(_) => None,
-                },
+                Ok(metadata) => metadata.modified().ok(),
                 Err(_) => None,
             };
 
@@ -396,14 +393,12 @@ impl ScanService {
             .await;
 
         // 2. 统一更新数据库中的封面路径，单线程，因为 sqlite 对并发支持不好
-        for result in results {
-            if let Some((album_id, cover_art_id)) = result {
-                let _ = sqlx::query("UPDATE albums SET cover_art_path = ? WHERE id = ?")
-                    .bind(&cover_art_id)
-                    .bind(album_id)
-                    .execute(&self.pool)
-                    .await;
-            }
+        for (album_id, cover_art_id) in results.into_iter().flatten() {
+            let _ = sqlx::query("UPDATE albums SET cover_art_path = ? WHERE id = ?")
+                .bind(&cover_art_id)
+                .bind(album_id)
+                .execute(&self.pool)
+                .await;
         }
     }
 
@@ -557,7 +552,7 @@ impl ScanService {
         .bind(&album.id)
         .bind(&album.artist_id)
         .bind(&album.name)
-        .bind(&album.year)
+        .bind(album.year)
         .bind(&album.genre)
         .bind(&album.path)
         .bind(album.created_at)
@@ -684,12 +679,10 @@ impl ScanService {
         // 读取标签元数据
         let meta = if format.metadata().current().is_some() {
             Some(format.metadata())
+        } else if probed.metadata.get().is_some() {
+            Some(probed.metadata.get().unwrap())
         } else {
-            if probed.metadata.get().is_some() {
-                Some(probed.metadata.get().unwrap())
-            } else {
-                None
-            }
+            None
         };
 
         if let Some(meta) = meta {
@@ -914,15 +907,15 @@ impl ScanService {
             .bind(&song.album_id)
             .bind(&song.artist_id)
             .bind(&song.title)
-            .bind(&song.track_number)
-            .bind(&song.disc_number)
-            .bind(&song.duration)
-            .bind(&song.bit_rate)
+            .bind(song.track_number)
+            .bind(song.disc_number)
+            .bind(song.duration)
+            .bind(song.bit_rate)
             .bind(&song.genre)
-            .bind(&song.year)
+            .bind(song.year)
             .bind(&song.content_type)
             .bind(&song.file_path)
-            .bind(&song.file_size)
+            .bind(song.file_size)
             .bind(&song.lyrics)
             .bind(song.created_at)
             .bind(song.updated_at)
@@ -1108,11 +1101,10 @@ mod tests {
                     let album_id = Uuid::new_v4().to_string();
                     let result =
                         ScanService::process_cover_art_for_album(&album_id, &mime, data).await;
-                        
-                        // 等待 3s 异步图片处理任务结束
-                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-                        println!("封面处理结果: album_id={} result={:?}", album_id, result);
 
+                    // 等待 3s 异步图片处理任务结束
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    println!("封面处理结果: album_id={} result={:?}", album_id, result);
                 }
 
                 println!("=====================================\n");

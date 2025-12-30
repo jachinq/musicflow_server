@@ -8,7 +8,6 @@ use image::DynamicImage;
 use image::{imageops::FilterType, GenericImageView, ImageFormat};
 use once_cell::sync::Lazy;
 use sqlx::SqlitePool;
-use tokio_util::io::ReaderStream;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
@@ -19,6 +18,7 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::{MetadataOptions, StandardTagKey};
 use symphonia::core::probe::Hint;
 use tokio::sync::Mutex;
+use tokio_util::io::ReaderStream;
 
 /// 音频元数据
 #[derive(Debug, Default)]
@@ -103,19 +103,11 @@ pub fn resize_and_convert_to_webp(
         // 压缩失败，保存为不压缩的 WebP
         resized
             .save_with_format(output_path, ImageFormat::WebP)
-            .map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to save WebP: {}", e),
-                )
-            })?;
+            .map_err(|e| std::io::Error::other(format!("Failed to save WebP: {}", e)))?;
     } else {
         let output_path = output_path.to_string_lossy().to_string();
         write_image_to_file(&webp.unwrap(), &output_path).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to compress and save WebP: {}", e),
-            )
+            std::io::Error::other(format!("Failed to compress and save WebP: {}", e))
         })?;
     }
 
@@ -153,19 +145,11 @@ pub fn resize_and_convert_to_webp_by_data(
         // 压缩失败，保存为不压缩的 WebP
         resized
             .save_with_format(output_path, ImageFormat::WebP)
-            .map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to save WebP: {}", e),
-                )
-            })?;
+            .map_err(|e| std::io::Error::other(format!("Failed to save WebP: {}", e)))?;
     } else {
         let output_path = output_path.to_string_lossy().to_string();
         write_image_to_file(&webp.unwrap(), &output_path).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to compress and save WebP: {}", e),
-            )
+            std::io::Error::other(format!("Failed to compress and save WebP: {}", e))
         })?;
     }
 
@@ -283,12 +267,10 @@ pub fn extract_audio_metadata_static(path: &Path) -> Result<AudioMetadata, AppEr
     // 读取标签元数据
     let meta = if format.metadata().current().is_some() {
         Some(format.metadata())
+    } else if probed.metadata.get().is_some() {
+        Some(probed.metadata.get().unwrap())
     } else {
-        if probed.metadata.get().is_some() {
-            Some(probed.metadata.get().unwrap())
-        } else {
-            None
-        }
+        None
     };
 
     if let Some(meta) = meta {
@@ -313,11 +295,9 @@ pub fn extract_audio_metadata_static(path: &Path) -> Result<AudioMetadata, AppEr
                     Some(StandardTagKey::Date) | Some(StandardTagKey::ReleaseDate) => {
                         if let Ok(year) = tag.value.to_string().parse::<i32>() {
                             metadata.year = Some(year);
-                        } else {
-                            if let Some(year_str) = tag.value.to_string().split('-').next() {
-                                if let Ok(year) = year_str.parse::<i32>() {
-                                    metadata.year = Some(year);
-                                }
+                        } else if let Some(year_str) = tag.value.to_string().split('-').next() {
+                            if let Ok(year) = year_str.parse::<i32>() {
+                                metadata.year = Some(year);
                             }
                         }
                     }
@@ -388,17 +368,15 @@ pub async fn prewarm_cover_cache_static(
         )
     })
     .await
-    .map_err(|e| {
-        std::io::Error::new(std::io::ErrorKind::Other, format!("Task join error: {}", e))
-    })??;
+    .map_err(|e| std::io::Error::other(format!("Task join error: {}", e)))??;
 
     Ok(())
 }
 
 // 防止同一封面同一尺寸被多次生成
 // Key: "{cover_art_id}_{size}"
-static CACHE_GENERATION_LOCKS: Lazy<Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>> =
-    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+type GenerationLock = Lazy<Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>>;
+static CACHE_GENERATION_LOCKS: GenerationLock = Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 /// 异步方法:预热封面缓存
 pub async fn prewarm_cover_from_original(
     cover_art_id: &str,
@@ -426,7 +404,7 @@ pub async fn prewarm_cover_from_original(
     // 5. 创建缓存目录
     let webp_dir = PathBuf::from("./coverArt/webp");
     if !webp_dir.exists() {
-        std::fs::create_dir_all(&webp_dir).map_err(|e| AppError::IoError(e))?;
+        std::fs::create_dir_all(&webp_dir).map_err(AppError::IoError)?;
     }
 
     // 6. 生成 WebP 缓存（spawn_blocking 避免阻塞）
@@ -439,12 +417,8 @@ pub async fn prewarm_cover_from_original(
         original_path.display(),
         cache_path.display()
     );
-    resize_and_convert_to_webp(&original_path, &cache_path, size, &config).map_err(|e| {
-        AppError::IoError(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Task join error: {}", e),
-        ))
-    })?;
+    resize_and_convert_to_webp(original_path, &cache_path, size, &config)
+        .map_err(|e| AppError::IoError(std::io::Error::other(format!("Task join error: {}", e))))?;
     Ok(())
 }
 
@@ -452,7 +426,7 @@ pub async fn prewarm_cover_from_original(
 pub async fn serve_image_file(file_path: PathBuf) -> Result<impl IntoResponse, AppError> {
     let file = tokio::fs::File::open(&file_path)
         .await
-        .map_err(|e| AppError::IoError(e))?;
+        .map_err(AppError::IoError)?;
 
     let stream = ReaderStream::new(file);
     let body = Body::from_stream(stream);

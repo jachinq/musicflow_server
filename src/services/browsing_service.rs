@@ -10,6 +10,7 @@
 use crate::error::AppError;
 use crate::models::dto::{AlbumDetailDto, ArtistDto, SongDetailDto};
 use crate::services::ServiceContext;
+use std::str::FromStr;
 use std::sync::Arc;
 
 /// 流派信息 (name, song_count, album_count)
@@ -29,10 +30,12 @@ pub enum AlbumListType {
     ByGenre,
 }
 
-impl AlbumListType {
+impl FromStr for AlbumListType {
+    type Err = String;
+
     /// 从字符串解析专辑列表类型
-    pub fn from_str(s: &str) -> Self {
-        match s {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = match s {
             "random" => AlbumListType::Random,
             "newest" => AlbumListType::Newest,
             "highest" => AlbumListType::Highest,
@@ -43,9 +46,12 @@ impl AlbumListType {
             "byYear" => AlbumListType::ByYear,
             "byGenre" => AlbumListType::ByGenre,
             _ => AlbumListType::Newest, // 默认按最新
-        }
+        };
+        Ok(s)
     }
+}
 
+impl AlbumListType {
     /// 获取 ORDER BY 子句
     fn order_by_clause(&self) -> &'static str {
         match self {

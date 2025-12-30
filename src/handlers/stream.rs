@@ -14,7 +14,7 @@ use crate::middleware::auth_middleware;
 use crate::models::response::{Lyrics, LyricsResponse};
 use crate::response::ApiResponse;
 use crate::services::song_service::CommState;
-use crate::utils::{MetaClient, image_utils};
+use crate::utils::{image_utils, MetaClient};
 
 /// 流媒体参数
 #[derive(Debug, Deserialize)]
@@ -81,7 +81,7 @@ pub async fn stream(
     // 打开文件
     let file = File::open(&file_path)
         .await
-        .map_err(|e| AppError::IoError(e))?;
+        .map_err(AppError::IoError)?;
 
     // 创建流
     let stream = ReaderStream::new(file);
@@ -140,7 +140,7 @@ pub async fn download(
     // 打开文件
     let file = File::open(&file_path)
         .await
-        .map_err(|e| AppError::IoError(e))?;
+        .map_err(AppError::IoError)?;
 
     // 创建流
     let stream = ReaderStream::new(file);
@@ -177,12 +177,13 @@ pub async fn get_cover_art(
         cover_art_id
     };
 
-    if empy_id || cover_art_id.replace("al-", "").trim().is_empty() { // 返回默认数据
+    if empy_id || cover_art_id.replace("al-", "").trim().is_empty() {
+        // 返回默认数据
         tracing::warn!("Empty cover art id, return default cover art");
-         return image_utils::serve_image_file(PathBuf::from("./web/default_cover.webp")).await;
+        return image_utils::serve_image_file(PathBuf::from("./web/default_cover.webp")).await;
     }
 
-    let size = params.size.unwrap_or(300).max(50).min(2000) as u32;
+    let size = params.size.unwrap_or(300).clamp(50, 2000) as u32;
 
     // 1. 检查缓存
     let cache_path = image_utils::get_webp_cache_path(cover_art_id, size);
@@ -216,34 +217,33 @@ pub async fn get_cover_art(
                     .map_err(|e| AppError::NotFound(format!("Failed to fetch cover: {}", e)))?;
 
                 // 3.3 读取响应字节流
-                let bytes = response
-                    .bytes()
-                    .await
-                    .map_err(|e| AppError::IoError(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to read response bytes: {}", e)
-                    )))?;
+                let bytes = response.bytes().await.map_err(|e| {
+                    AppError::IoError(std::io::Error::other(format!(
+                        "Failed to read response bytes: {}",
+                        e
+                    )))
+                })?;
 
                 // 3.4 缓存到本地 ./coverArt/originals/{cover_art_id}.jpg
                 let originals_dir = PathBuf::from("./coverArt/originals");
                 if !originals_dir.exists() {
-                    std::fs::create_dir_all(&originals_dir)
-                        .map_err(|e| AppError::IoError(e))?;
+                    std::fs::create_dir_all(&originals_dir).map_err(AppError::IoError)?;
                 }
 
                 let original_path = originals_dir.join(format!("{}.jpg", cover_art_id));
                 tokio::fs::write(&original_path, &bytes)
                     .await
-                    .map_err(|e| AppError::IoError(e))?;
+                    .map_err(AppError::IoError)?;
 
                 tracing::info!("save original cover to: {}", original_path.display());
 
                 // 3.5 生成 WebP 缓存
-                image_utils::prewarm_cover_from_original(cover_art_id, size, &original_path).await?;
+                image_utils::prewarm_cover_from_original(cover_art_id, size, &original_path)
+                    .await?;
             } else {
                 return Err(AppError::not_found("Album not found for cover art"));
             }
-        },
+        }
     }
 
     // 4. 统一通过 serve_image_file 返回

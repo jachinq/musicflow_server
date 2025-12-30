@@ -3,10 +3,10 @@
 
 use crate::error::AppError;
 use crate::extractors::Format;
-use crate::models::dto::{AlbumDto, AlbumDetailDto, ArtistDto, SongDetailDto, SongDto};
+use crate::models::dto::{AlbumDetailDto, AlbumDto, ArtistDto, SongDetailDto, SongDto};
 use crate::models::response::{
-    AlbumResponse, ArtistResponse, SearchResult, SearchResult2,
-    SearchResult2Response, SearchResult3, SearchResult3Response, SearchResultResponse, Song,
+    AlbumResponse, ArtistResponse, SearchResult, SearchResult2, SearchResult2Response,
+    SearchResult3, SearchResult3Response, SearchResultResponse, Song,
 };
 use crate::response::ApiResponse;
 use crate::services::song_service::CommState;
@@ -244,13 +244,13 @@ pub async fn search(
         let query = format!(
             "SELECT DISTINCT ar.id, ar.name
              FROM artists ar
-             WHERE {}
+             {}
              ORDER BY ar.name
              LIMIT ? OFFSET ?",
             if params.any.is_some() {
-                "ar.name LIKE ?"
+                "WHERE ar.name LIKE ?"
             } else {
-                "ar.name LIKE ?"
+                ""
             }
         );
         let mut query_builder = sqlx::query_as::<_, ArtistDto>(&query);

@@ -7,18 +7,17 @@ use crate::models::response;
 
 const KUGOU_META_URL: &str = "http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword={}&page=1&pagesize=20&showtype=1";
 
+#[derive(Debug, Clone, Default)]
 pub struct MetaClient {
     client: reqwest::Client,
 }
 
 impl MetaClient {
     pub fn new() -> Self {
-        Self {
-            client: reqwest::Client::new(),
-        }
+        Self::default()
     }
     pub async fn get_kugou_cover(&self, keyword: &str) -> Result<String> {
-        let url = KUGOU_META_URL.replace("{}", &keyword);
+        let url = KUGOU_META_URL.replace("{}", keyword);
         println!("url: {}", url);
 
         let res = self.client.get(url).send().await?;

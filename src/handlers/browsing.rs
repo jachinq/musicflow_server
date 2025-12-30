@@ -226,7 +226,7 @@ pub async fn get_artists(
         .keys()
         .map(|k| {
             let list = index_map.get(k);
-            let list = list.map(|v| v.clone());
+            let list = list.cloned();
             ArtistIndex {
                 name: k.to_string(),
                 artist: list.unwrap_or_default(),
@@ -620,7 +620,7 @@ pub async fn get_artist_info(
     // 目前返回基本信息
     let result = crate::models::response::ArtistInfo {
         biography: None,
-        music_brainz_id: artist.map(|(_, mbid)| mbid).flatten(),
+        music_brainz_id: artist.and_then(|(_, mbid)| mbid),
         last_fm_url: None,
         similar_artists: None,
     };

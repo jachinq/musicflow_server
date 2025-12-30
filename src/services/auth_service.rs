@@ -1,5 +1,4 @@
 //! 认证服务
-#![allow(dead_code)]
 
 use crate::models::dto::{CreateUserRequest, LoginRequest};
 use crate::models::entities::User;
@@ -179,89 +178,6 @@ impl AuthService {
         let salt = generate_salt();
         let token = generate_subsonic_token(password, &salt);
         (salt, token)
-    }
-
-    /// 根据用户ID获取用户信息
-    pub async fn get_user_by_id(&self, user_id: &str) -> Result<User, AppError> {
-        let user = sqlx::query_as::<_, User>(
-            "SELECT * FROM users WHERE id = ?"
-        )
-        .bind(user_id)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        user.ok_or_else(|| AppError::not_found("User not found"))
-    }
-
-    /// 获取所有用户（管理员功能）
-    pub async fn get_all_users(&self) -> Result<Vec<User>, AppError> {
-        let users = sqlx::query_as::<_, User>(
-            "SELECT * FROM users ORDER BY created_at DESC"
-        )
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(users)
-    }
-
-    /// 更新用户
-    pub async fn update_user(
-        &self,
-        user_id: &str,
-        is_admin: bool,
-        max_bitrate: i32,
-        download_role: bool,
-        upload_role: bool,
-        playlist_role: bool,
-        cover_art_role: bool,
-        comment_role: bool,
-        podcast_role: bool,
-        share_role: bool,
-        video_conversion_role: bool,
-        scrobbling_enabled: bool,
-    ) -> Result<(), AppError> {
-        sqlx::query(
-            "UPDATE users SET
-                is_admin = ?,
-                max_bitrate = ?,
-                download_role = ?,
-                upload_role = ?,
-                playlist_role = ?,
-                cover_art_role = ?,
-                comment_role = ?,
-                podcast_role = ?,
-                share_role = ?,
-                video_conversion_role = ?,
-                scrobbling_enabled = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?"
-        )
-        .bind(is_admin)
-        .bind(max_bitrate)
-        .bind(download_role)
-        .bind(upload_role)
-        .bind(playlist_role)
-        .bind(cover_art_role)
-        .bind(comment_role)
-        .bind(podcast_role)
-        .bind(share_role)
-        .bind(video_conversion_role)
-        .bind(scrobbling_enabled)
-        .bind(user_id)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
-    /// 删除用户
-    pub async fn delete_user(&self, user_id: &str) -> Result<(), AppError> {
-        sqlx::query("DELETE FROM users WHERE id = ?")
-            .bind(user_id)
-            .execute(&self.pool)
-            .await?;
-
-        Ok(())
     }
 
     /// 修改密码

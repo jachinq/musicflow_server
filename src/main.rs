@@ -65,10 +65,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 6. 创建默认管理员用户（如果不存在）
     create_default_admin(&pool).await?;
 
-    // 7. 创建服务实例
-    let pool_arc = Arc::new(pool.clone());
+    // 7. 构建应用路由
+    let app = build_app(pool, config.clone());
 
-    // 创建 ServiceContext (共享上下文)
+    // 8. 启动服务器
+    let addr = SocketAddr::from((config.host.parse::<std::net::IpAddr>()?, config.port));
+
+    tracing::info!("Server listening on http://{}", addr);
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+
+    Ok(())
+}
+
+/// 构建应用路由
+fn build_app(pool: DbPool, config: AppConfig) -> Router {
+    // 创建服务上下文
     let service_ctx = Arc::new(ServiceContext::new(pool.clone()));
 
     let auth_service = Arc::new(AuthService::new(pool.clone()));
@@ -81,43 +94,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_service = Arc::new(UserService::new(service_ctx.clone(), auth_service.clone()));
     let playlist_service = Arc::new(PlaylistService::new(service_ctx.clone()));
 
-    // 8. 构建应用路由
-    let app = build_app(
-        pool_arc,
-        auth_service,
-        scan_service,
-        song_service,
-        library_service,
-        user_service,
-        playlist_service,
-        config.clone(),
-    );
-
-    // 9. 启动服务器
-    let addr = SocketAddr::from((config.host.parse::<std::net::IpAddr>()?, config.port));
-
-    tracing::info!("Server listening on http://{}", addr);
-
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
-
-    Ok(())
-}
-
-/// 构建应用路由
-fn build_app(
-    pool: Arc<DbPool>,
-    auth_service: Arc<AuthService>,
-    scan_service: Arc<ScanService>,
-    song_service: Arc<SongService>,
-    library_service: Arc<LibraryService>,
-    user_service: Arc<UserService>,
-    playlist_service: Arc<PlaylistService>,
-    config: AppConfig,
-) -> Router {
     // 创建共享状态
     let _auth_state = auth_service.clone();
 
+    let pool = Arc::new(pool);
     let comm_state = CommState {
         pool: pool.clone(),
         song_service: song_service.clone(),
@@ -151,7 +131,7 @@ fn build_app(
         .layer(axum_middleware::from_fn(middleware::auth_middleware));
 
     // 合并所有路由
-    let app = Router::new()
+    Router::new()
         // 系统端点（公开访问）
         .merge(system_routes)
         // 认证端点（公开访问）
@@ -171,9 +151,7 @@ fn build_app(
         .layer(tower_http::trace::TraceLayer::new_for_http())
         // 将配置和数据库连接池添加到请求扩展中（供中间件使用）
         .layer(axum::Extension(config))
-        .layer(axum::Extension(pool));
-
-    app
+        .layer(axum::Extension(pool))
 }
 
 /// 创建默认管理员用户
