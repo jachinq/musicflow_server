@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use crate::models::dto::{AlbumDto, AlbumDetailDto};
+use super::ToXml;
 
 /// 专辑响应 (Subsonic 格式 - 简略)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,4 +113,90 @@ pub struct AlbumList2Response {
 pub struct AlbumList2 {
     #[serde(rename = "album")]
     pub albums: Vec<AlbumResponse>,
+}
+
+// ========== XML 序列化实现 ==========
+
+impl ToXml for AlbumResponse {
+    fn to_xml_element(&self) -> String {
+        let mut xml = format!(
+            r#"<album id="{}" name="{}" artist="{}""#,
+            self.id, self.name, self.artist
+        );
+        if let Some(artist_id) = &self.artist_id {
+            xml.push_str(&format!(r#" artistId="{}""#, artist_id));
+        }
+        if let Some(cover_art) = &self.cover_art {
+            xml.push_str(&format!(r#" coverArt="{}""#, cover_art));
+        }
+        if let Some(song_count) = self.song_count {
+            xml.push_str(&format!(r#" songCount="{}""#, song_count));
+        }
+        if let Some(duration) = self.duration {
+            xml.push_str(&format!(r#" duration="{}""#, duration));
+        }
+        if let Some(play_count) = self.play_count {
+            xml.push_str(&format!(r#" playCount="{}""#, play_count));
+        }
+        if let Some(year) = self.year {
+            xml.push_str(&format!(r#" year="{}""#, year));
+        }
+        if let Some(genre) = &self.genre {
+            xml.push_str(&format!(r#" genre="{}""#, genre));
+        }
+        xml.push_str("/>");
+        xml
+    }
+}
+
+impl ToXml for AlbumDetailResponse {
+    fn to_xml_element(&self) -> String {
+        self.album.to_xml_element()
+    }
+}
+
+impl ToXml for AlbumDetail {
+    fn to_xml_element(&self) -> String {
+        let mut xml = format!(
+            r#"<album id="{}" name="{}" artist="{}" artistId="{}" songCount="{}" duration="{}""#,
+            self.id, self.name, self.artist, self.artist_id, self.song_count, self.duration
+        );
+        if let Some(cover_art) = &self.cover_art {
+            xml.push_str(&format!(r#" coverArt="{}""#, cover_art));
+        }
+        xml.push('>');
+        for song in &self.song {
+            xml.push_str(&song.to_xml_element());
+        }
+        xml.push_str("</album>");
+        xml
+    }
+}
+
+impl ToXml for super::AlbumList {
+    fn to_xml_element(&self) -> String {
+        let mut xml = String::from("<albumList>");
+        for album in &self.albums {
+            xml.push_str(&album.to_xml_element());
+        }
+        xml.push_str("</albumList>");
+        xml
+    }
+}
+
+impl ToXml for AlbumList2Response {
+    fn to_xml_element(&self) -> String {
+        self.album_list2.to_xml_element()
+    }
+}
+
+impl ToXml for AlbumList2 {
+    fn to_xml_element(&self) -> String {
+        let mut xml = String::from("<albumList2>");
+        for album in &self.albums {
+            xml.push_str(&album.to_xml_element());
+        }
+        xml.push_str("</albumList2>");
+        xml
+    }
 }

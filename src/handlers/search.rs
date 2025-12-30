@@ -2,14 +2,15 @@
 #![allow(dead_code)]
 
 use crate::error::AppError;
+use crate::extractors::Format;
 use crate::models::dto::{AlbumDto, AlbumDetailDto, ArtistDto, SongDetailDto, SongDto};
 use crate::models::response::{
-    AlbumResponse, ArtistResponse, ResponseContainer, SearchResult, SearchResult2,
+    AlbumResponse, ArtistResponse, SearchResult, SearchResult2,
     SearchResult2Response, SearchResult3, SearchResult3Response, SearchResultResponse, Song,
-    SubsonicResponse,
 };
+use crate::response::ApiResponse;
 use crate::services::song_service::CommState;
-use axum::{extract::Query, routing::get, Json, Router};
+use axum::{extract::Query, routing::get, Router};
 use serde::Deserialize;
 
 /// 搜索参数 (search3)
@@ -22,13 +23,6 @@ pub struct Search3Params {
     pub album_offset: Option<i32>,
     pub song_count: Option<i32>,
     pub song_offset: Option<i32>,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// 搜索参数 (search2)
@@ -41,13 +35,6 @@ pub struct Search2Params {
     pub album_offset: Option<i32>,
     pub song_count: Option<i32>,
     pub song_offset: Option<i32>,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// 搜索参数 (search)
@@ -59,20 +46,14 @@ pub struct SearchParams {
     pub any: Option<String>,
     pub count: Option<i32>,
     pub offset: Option<i32>,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// GET /rest/search3
 pub async fn search3(
     axum::extract::State(state): axum::extract::State<CommState>,
     Query(params): Query<Search3Params>,
-) -> Result<Json<SubsonicResponse<SearchResult3Response>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<SearchResult3Response>, AppError> {
     let artist_count = params.artist_count.unwrap_or(20);
     let artist_offset = params.artist_offset.unwrap_or(0);
     let album_count = params.album_count.unwrap_or(20);
@@ -140,21 +121,15 @@ pub async fn search3(
         },
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// GET /rest/search2
 pub async fn search2(
     axum::extract::State(state): axum::extract::State<CommState>,
     Query(params): Query<Search2Params>,
-) -> Result<Json<SubsonicResponse<SearchResult2Response>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<SearchResult2Response>, AppError> {
     let artist_count = params.artist_count.unwrap_or(20);
     let artist_offset = params.artist_offset.unwrap_or(0);
     let album_count = params.album_count.unwrap_or(20);
@@ -223,21 +198,15 @@ pub async fn search2(
         },
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// GET /rest/search
 pub async fn search(
     axum::extract::State(state): axum::extract::State<CommState>,
     Query(params): Query<SearchParams>,
-) -> Result<Json<SubsonicResponse<SearchResultResponse>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<SearchResultResponse>, AppError> {
     let count = params.count.unwrap_or(20);
     let offset = params.offset.unwrap_or(0);
 
@@ -369,14 +338,7 @@ pub async fn search(
         },
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 pub fn routes() -> Router<CommState> {

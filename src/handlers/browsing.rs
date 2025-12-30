@@ -2,16 +2,18 @@
 #![allow(dead_code)]
 
 use crate::error::AppError;
+use crate::extractors::Format;
 use crate::models::dto::{ArtistDto, SongDetailDto, AlbumDetailDto};
 use crate::models::response::{
     AlbumDetail, AlbumDetailResponse, AlbumList2, AlbumList2Response, AlbumResponse, ArtistDetail,
     ArtistDetailResponse, ArtistIndex, ArtistResponse, Artists, ArtistsResponse, Directory, Genre,
-    Genres, GenresResponse, Index, Indexes, RandomSongs, RandomSongsResponse, ResponseContainer,
-    Song, SongResponse, SongsByGenreResponse, SongsResponse, SubsonicResponse, TopSongs,
+    Genres, GenresResponse, Index, Indexes, RandomSongs, RandomSongsResponse,
+    Song, SongResponse, SongsByGenreResponse, SongsResponse, TopSongs,
     TopSongsResponse,
 };
+use crate::response::ApiResponse;
 use crate::services::SongService;
-use axum::{extract::Query, routing::get, Json, Router};
+use axum::{extract::Query, routing::get, Router};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -39,46 +41,26 @@ pub struct GetMusicDirectoryParams {
 #[derive(Debug, Deserialize)]
 pub struct GetArtistParams {
     pub id: String,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// 获取专辑参数
 #[derive(Debug, Deserialize)]
 pub struct GetAlbumParams {
     pub id: String,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// 获取歌曲参数
 #[derive(Debug, Deserialize)]
 pub struct GetSongParams {
     pub id: String,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// GET /rest/getIndexes
 pub async fn get_indexes(
+    Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(_params): Query<GetIndexesParams>,
-) -> Result<Json<SubsonicResponse<Indexes>>, AppError> {
+) -> Result<ApiResponse<Indexes>, AppError> {
     // 查询所有艺术家
     let artists =
         sqlx::query_as::<_, (String, String)>("SELECT id, name FROM artists ORDER BY name")
@@ -116,21 +98,15 @@ pub async fn get_indexes(
         indexes,
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// GET /rest/getMusicDirectory
 pub async fn get_music_directory(
+    Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetMusicDirectoryParams>,
-) -> Result<Json<SubsonicResponse<Directory>>, AppError> {
+) -> Result<ApiResponse<Directory>, AppError> {
     // 判断是艺术家还是专辑
     // 如果ID以'a'开头可能是艺术家，以'b'开头可能是专辑
     // 这里简化处理，查询数据库判断
@@ -166,19 +142,15 @@ pub async fn get_music_directory(
             })
             .collect();
 
-        return Ok(Json(SubsonicResponse {
-            response: ResponseContainer {
-                status: "ok".to_string(),
-                version: "1.16.1".to_string(),
-                error: None,
-                data: Some(Directory {
-                    id,
-                    name,
-                    parent: Some(artist_id),
-                    child,
-                }),
-            },
-        }));
+        return Ok(ApiResponse::ok(
+            Some(Directory {
+                id,
+                name,
+                parent: Some(artist_id),
+                child,
+            }),
+            format,
+        ));
     }
 
     // 尝试作为艺术家查询
@@ -210,19 +182,15 @@ pub async fn get_music_directory(
             })
             .collect();
 
-        return Ok(Json(SubsonicResponse {
-            response: ResponseContainer {
-                status: "ok".to_string(),
-                version: "1.16.1".to_string(),
-                error: None,
-                data: Some(Directory {
-                    id,
-                    name,
-                    parent: None,
-                    child,
-                }),
-            },
-        }));
+        return Ok(ApiResponse::ok(
+            Some(Directory {
+                id,
+                name,
+                parent: None,
+                child,
+            }),
+            format,
+        ));
     }
 
     Err(AppError::not_found("Directory not found"))
@@ -230,9 +198,10 @@ pub async fn get_music_directory(
 
 /// GET /rest/getArtists
 pub async fn get_artists(
+    Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(_params): Query<GetArtistsParams>,
-) -> Result<Json<SubsonicResponse<ArtistsResponse>>, AppError> {
+) -> Result<ApiResponse<ArtistsResponse>, AppError> {
     // 查询艺术家信息
     let artist = sqlx::query_as::<_, ArtistDto>("SELECT id, name, cover_art_path FROM artists")
         .fetch_all(&*state.pool)
@@ -269,21 +238,15 @@ pub async fn get_artists(
         artists: Artists { index: indexs },
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// GET /rest/getArtist
 pub async fn get_artist(
+    Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetArtistParams>,
-) -> Result<Json<SubsonicResponse<ArtistDetailResponse>>, AppError> {
+) -> Result<ApiResponse<ArtistDetailResponse>, AppError> {
     // 查询艺术家信息
     let artist = sqlx::query_as::<_, (String, String, Option<String>)>(
         "SELECT id, name, cover_art_path FROM artists WHERE id = ?",
@@ -328,21 +291,15 @@ pub async fn get_artist(
         },
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// GET /rest/getAlbum
 pub async fn get_album(
+    Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetAlbumParams>,
-) -> Result<Json<SubsonicResponse<AlbumDetailResponse>>, AppError> {
+) -> Result<ApiResponse<AlbumDetailResponse>, AppError> {
     // 查询专辑信息
     let album = sqlx::query_as::<_, AlbumDetailDto>(
         "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
@@ -389,21 +346,15 @@ pub async fn get_album(
         },
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// GET /rest/getSong
 pub async fn get_song(
+    Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetSongParams>,
-) -> Result<Json<SubsonicResponse<SongResponse>>, AppError> {
+) -> Result<ApiResponse<SongResponse>, AppError> {
     // 查询歌曲信息
     let song = sqlx::query_as::<_, SongDetailDto>(&format!(
         "{} WHERE s.id = ?",
@@ -416,14 +367,7 @@ pub async fn get_song(
 
     let result = SongResponse { song: song.into() };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// 获取专辑列表参数
@@ -436,13 +380,6 @@ pub struct GetAlbumListParams {
     pub to_year: Option<i32>,
     pub genre: Option<String>,
     pub music_folder_id: Option<String>,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// 获取随机歌曲参数
@@ -461,20 +398,14 @@ pub struct GetArtistInfoParams {
     pub id: String,
     pub count: Option<i32>,
     pub include_not_present: Option<bool>,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// GET /rest/getAlbumList - 获取专辑列表
 pub async fn get_album_list(
+    Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetAlbumListParams>,
-) -> Result<Json<SubsonicResponse<crate::models::response::AlbumList>>, AppError> {
+) -> Result<ApiResponse<crate::models::response::AlbumList>, AppError> {
     use crate::models::dto::AlbumDetailDto;
 
     let size = params.size.unwrap_or(10).min(500); // 限制最大500
@@ -577,43 +508,55 @@ pub async fn get_album_list(
         albums: album_responses,
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// GET /rest/getAlbumList2 - 获取专辑列表 (v2)
 pub async fn get_album_list2(
-    state: axum::extract::State<BrowsingState>,
-    params: Query<GetAlbumListParams>,
-) -> Result<Json<SubsonicResponse<AlbumList2Response>>, AppError> {
-    // AlbumList2 与 AlbumList 结构相同，只是API版本不同
-    let result = get_album_list(state, params).await?;
+    Format(format): Format,
+    axum::extract::State(state): axum::extract::State<BrowsingState>,
+    Query(params): Query<GetAlbumListParams>,
+) -> Result<ApiResponse<AlbumList2Response>, AppError> {
+    use crate::models::dto::AlbumDetailDto;
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: result.0.response.data.map(|list| AlbumList2Response {
-                album_list2: AlbumList2 {
-                    albums: list.albums,
-                },
-            }),
+    let size = params.size.unwrap_or(10).min(500); // 限制最大500
+    let offset = params.offset.unwrap_or(0);
+
+    let query = match params.r#type.as_str() {
+        "random" => "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
+                    a.cover_art_path, a.song_count, a.duration, a.play_count
+             FROM albums a JOIN artists ar ON a.artist_id = ar.id ORDER BY RANDOM() LIMIT ? OFFSET ?",
+        "newest" => "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
+                    a.cover_art_path, a.song_count, a.duration, a.play_count
+             FROM albums a JOIN artists ar ON a.artist_id = ar.id ORDER BY a.created_at DESC LIMIT ? OFFSET ?",
+        _ => "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
+                    a.cover_art_path, a.song_count, a.duration, a.play_count
+             FROM albums a JOIN artists ar ON a.artist_id = ar.id ORDER BY a.created_at DESC LIMIT ? OFFSET ?",
+    };
+
+    let albums = sqlx::query_as::<_, AlbumDetailDto>(query)
+        .bind(size)
+        .bind(offset)
+        .fetch_all(&*state.pool)
+        .await?;
+
+    let album_responses = AlbumResponse::from_dto_details(albums);
+
+    let result = AlbumList2Response {
+        album_list2: AlbumList2 {
+            albums: album_responses,
         },
-    }))
+    };
+
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// GET /rest/getRandomSongs - 获取随机歌曲
 pub async fn get_random_songs(
+    Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetRandomSongsParams>,
-) -> Result<Json<SubsonicResponse<RandomSongsResponse>>, AppError> {
+) -> Result<ApiResponse<RandomSongsResponse>, AppError> {
     let size = params.size.unwrap_or(10).min(500);
 
     let mut query = format!("{} WHERE 1=1", state.song_service.detail_sql());
@@ -652,21 +595,15 @@ pub async fn get_random_songs(
         },
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// GET /rest/getArtistInfo - 获取艺术家信息
 pub async fn get_artist_info(
+    Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetArtistInfoParams>,
-) -> Result<Json<SubsonicResponse<crate::models::response::ArtistInfo>>, AppError> {
+) -> Result<ApiResponse<crate::models::response::ArtistInfo>, AppError> {
     // 查询艺术家基本信息
     let artist = sqlx::query_as::<_, (String, Option<String>)>(
         "SELECT name, music_brainz_id FROM artists WHERE id = ?",
@@ -688,23 +625,17 @@ pub async fn get_artist_info(
         similar_artists: None,
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// GET /rest/getArtistInfo2 - 获取艺术家信息 (v2)
 pub async fn get_artist_info2(
+    format: Format,
     state: axum::extract::State<BrowsingState>,
     params: Query<GetArtistInfoParams>,
-) -> Result<Json<SubsonicResponse<crate::models::response::ArtistInfo>>, AppError> {
+) -> Result<ApiResponse<crate::models::response::ArtistInfo>, AppError> {
     // ArtistInfo2 与 ArtistInfo 结构相同
-    get_artist_info(state, params).await
+    get_artist_info(format, state, params).await
 }
 
 /// 获取热门歌曲参数
@@ -712,13 +643,6 @@ pub async fn get_artist_info2(
 pub struct GetTopSongsParams {
     pub artist: String,
     pub count: Option<i32>,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// 获取流派歌曲参数
@@ -728,20 +652,14 @@ pub struct GetSongsByGenreParams {
     pub count: Option<i32>,
     pub offset: Option<i32>,
     pub music_folder_id: Option<String>,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// GET /rest/getTopSongs - 获取艺术家热门歌曲
 pub async fn get_top_songs(
+    Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetTopSongsParams>,
-) -> Result<Json<SubsonicResponse<TopSongsResponse>>, AppError> {
+) -> Result<ApiResponse<TopSongsResponse>, AppError> {
     use crate::models::dto::SongDetailDto;
 
     let count = params.count.unwrap_or(50).max(5000); // 默认50首，最多5000首
@@ -756,16 +674,12 @@ pub async fn get_top_songs(
         Some((id,)) => id,
         None => {
             // 艺术家不存在，返回空列表
-            return Ok(Json(SubsonicResponse {
-                response: ResponseContainer {
-                    status: "ok".to_string(),
-                    version: "1.16.1".to_string(),
-                    error: None,
-                    data: Some(TopSongsResponse {
-                        top_songs: TopSongs { song: vec![] },
-                    }),
-                },
-            }));
+            return Ok(ApiResponse::ok(
+                Some(TopSongsResponse {
+                    top_songs: TopSongs { song: vec![] },
+                }),
+                format,
+            ));
         }
     };
 
@@ -787,21 +701,15 @@ pub async fn get_top_songs(
         },
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// GET /rest/getSongsByGenre - 获取指定流派的歌曲
 pub async fn get_songs_by_genre(
+    Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetSongsByGenreParams>,
-) -> Result<Json<SubsonicResponse<SongsByGenreResponse>>, AppError> {
+) -> Result<ApiResponse<SongsByGenreResponse>, AppError> {
     use crate::models::dto::SongDetailDto;
 
     let count = params.count.unwrap_or(10).min(500); // 默认10首，最多500首
@@ -826,20 +734,14 @@ pub async fn get_songs_by_genre(
         },
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// GET /rest/getGenres - 获取所有流派
 pub async fn get_genres(
+    Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
-) -> Result<Json<SubsonicResponse<GenresResponse>>, AppError> {
+) -> Result<ApiResponse<GenresResponse>, AppError> {
     // 从歌曲和专辑中统计流派及其计数
     let genres = sqlx::query_as::<_, (String, i32, i32)>(
         "SELECT
@@ -868,14 +770,7 @@ pub async fn get_genres(
         genres: Genres { genres: genre_list },
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// 组合状态，用于 browsing 路由

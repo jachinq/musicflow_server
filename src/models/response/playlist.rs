@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use crate::models::dto::PlaylistDto;
-use super::Song;
+use super::{Song, ToXml};
 
 /// 播放列表响应 (Subsonic 格式 - 简略)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,5 +46,46 @@ impl From<PlaylistDto> for PlaylistResponse {
             song_count: dto.song_count,
             duration: Some(dto.duration),
         }
+    }
+}
+
+// ========== XML 序列化实现 ==========
+
+impl ToXml for PlaylistResponse {
+    fn to_xml_element(&self) -> String {
+        let mut xml = format!(
+            r#"<playlist id="{}" name="{}" owner="{}" public="{}" songCount="{}""#,
+            self.id, self.name, self.owner, self.public, self.song_count
+        );
+        if let Some(duration) = self.duration {
+            xml.push_str(&format!(r#" duration="{}""#, duration));
+        }
+        xml.push_str("/>");
+        xml
+    }
+}
+
+impl ToXml for Playlists {
+    fn to_xml_element(&self) -> String {
+        let mut xml = String::from("<playlists>");
+        for playlist in &self.playlists {
+            xml.push_str(&playlist.to_xml_element());
+        }
+        xml.push_str("</playlists>");
+        xml
+    }
+}
+
+impl ToXml for PlaylistDetail {
+    fn to_xml_element(&self) -> String {
+        let mut xml = format!(
+            r#"<playlist id="{}" name="{}" owner="{}" public="{}" songCount="{}" duration="{}">"#,
+            self.id, self.name, self.owner, self.public, self.song_count, self.duration
+        );
+        for song in &self.entry {
+            xml.push_str(&song.to_xml_element());
+        }
+        xml.push_str("</playlist>");
+        xml
     }
 }

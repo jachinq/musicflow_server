@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use crate::models::dto::UserDto;
 use crate::models::entities::User;
+use super::ToXml;
 
 /// 用户响应 (Subsonic 格式)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,5 +77,39 @@ impl From<User> for UserResponse {
             share_role: user.share_role,
             video_conversion_role: user.video_conversion_role,
         }
+    }
+}
+
+// ========== XML 序列化实现 ==========
+
+impl ToXml for UserResponse {
+    fn to_xml_element(&self) -> String {
+        format!(
+            r#"<user username="{}" email="{}" adminRole="{}" scrobblingEnabled="{}" maxBitRate="{}" downloadRole="{}" uploadRole="{}" playlistRole="{}" coverArtRole="{}" commentRole="{}" podcastRole="{}" shareRole="{}" videoConversionRole="{}"/>"#,
+            self.username,
+            self.email,
+            self.admin,
+            self.scrobbling_enabled,
+            self.max_bit_rate,
+            self.download_role,
+            self.upload_role,
+            self.playlist_role,
+            self.cover_art_role,
+            self.comment_role,
+            self.podcast_role,
+            self.share_role,
+            self.video_conversion_role
+        )
+    }
+}
+
+impl ToXml for UsersResponse {
+    fn to_xml_element(&self) -> String {
+        let mut xml = String::from("<users>");
+        for user in &self.users {
+            xml.push_str(&user.to_xml_element());
+        }
+        xml.push_str("</users>");
+        xml
     }
 }

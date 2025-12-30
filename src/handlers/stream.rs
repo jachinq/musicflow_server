@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use axum::body::Body;
-use axum::{extract::Query, http::HeaderMap, response::IntoResponse, routing::get, Json, Router};
+use axum::{extract::Query, http::HeaderMap, response::IntoResponse, routing::get, Router};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use sqlx::SqlitePool;
@@ -14,8 +14,10 @@ use tokio::sync::Mutex;
 use tokio_util::io::ReaderStream;
 
 use crate::error::AppError;
+use crate::extractors::Format;
 use crate::middleware::auth_middleware;
-use crate::models::response::{Lyrics, LyricsResponse, SubsonicResponse};
+use crate::models::response::{Lyrics, LyricsResponse};
+use crate::response::ApiResponse;
 use crate::utils::image_utils;
 
 // 防止同一封面同一尺寸被多次生成
@@ -287,9 +289,10 @@ pub struct LyricsParams {
 
 /// GET /rest/getLyrics - 获取歌词
 pub async fn get_lyrics(
+    Format(format): Format,
     axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
     Query(params): Query<LyricsParams>,
-) -> Result<Json<SubsonicResponse<LyricsResponse>>, AppError> {
+) -> Result<ApiResponse<LyricsResponse>, AppError> {
     // 构建查询条件
     let song = if let (Some(artist), Some(title)) = (params.artist.as_ref(), params.title.as_ref())
     {
@@ -350,7 +353,7 @@ pub async fn get_lyrics(
             },
         };
 
-        Ok(Json(SubsonicResponse::ok(Some(lyrics_response))))
+        Ok(ApiResponse::ok(Some(lyrics_response), format))
     } else {
         // 如果没有找到歌词，返回空的歌词对象
         let lyrics_response = LyricsResponse {
@@ -360,7 +363,7 @@ pub async fn get_lyrics(
                 text: None,
             },
         };
-        Ok(Json(SubsonicResponse::ok(Some(lyrics_response))))
+        Ok(ApiResponse::ok(Some(lyrics_response), format))
     }
 }
 

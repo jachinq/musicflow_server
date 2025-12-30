@@ -1,14 +1,14 @@
 //! 播放列表端点处理器
 
-use axum::{extract::Query, routing::{get, post}, Json, Router};
+use axum::{extract::Query, routing::{get, post}, Router};
 use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::error::AppError;
+use crate::extractors::Format;
 use crate::models::dto::{CreatePlaylistRequest, UpdatePlaylistRequest};
-use crate::models::response::{
-    PlaylistDetail, PlaylistResponse, Playlists, ResponseContainer, Song, SubsonicResponse,
-};
+use crate::models::response::{PlaylistDetail, PlaylistResponse, Playlists, Song};
+use crate::response::ApiResponse;
 use crate::services::PlaylistService;
 
 /// 播放列表处理器状态
@@ -22,16 +22,19 @@ pub struct PlaylistState {
 #[derive(Debug, Deserialize)]
 pub struct PlaylistParams {
     pub id: Option<String>,
-    pub u: String,
 }
 
 /// GET /rest/getPlaylists - 获取所有播放列表
 pub async fn get_playlists(
     axum::extract::State(state): axum::extract::State<PlaylistState>,
-    Query(params): Query<PlaylistParams>,
-) -> Result<Json<SubsonicResponse<Playlists>>, AppError> {
+    Query(_params): Query<PlaylistParams>,
+    Format(format): Format,
+) -> Result<ApiResponse<Playlists>, AppError> {
+    // TODO: 需要从认证中间件获取当前用户名
+    let username = "admin"; // 临时硬编码
+
     // 调用 Service 层
-    let playlists = state.playlist_service.get_playlists(&params.u).await?;
+    let playlists = state.playlist_service.get_playlists(username).await?;
 
     // 转换为响应格式
     let playlist_responses = playlists
@@ -50,21 +53,15 @@ pub async fn get_playlists(
         playlists: playlist_responses,
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// GET /rest/getPlaylist - 获取播放列表详情
 pub async fn get_playlist(
     axum::extract::State(state): axum::extract::State<PlaylistState>,
     Query(params): Query<PlaylistParams>,
-) -> Result<Json<SubsonicResponse<PlaylistDetail>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<PlaylistDetail>, AppError> {
     let playlist_id = params.id.ok_or_else(|| AppError::missing_parameter("id"))?;
 
     // 调用 Service 层
@@ -81,23 +78,16 @@ pub async fn get_playlist(
         entry: Song::from_dtos(detail.songs),
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// POST /rest/createPlaylist - 创建播放列表
 pub async fn create_playlist(
     claims: crate::middleware::auth_middleware::Claims,
     axum::extract::State(state): axum::extract::State<PlaylistState>,
-    Query(params): Query<PlaylistParams>,
-    Json(body): Json<CreatePlaylistRequest>,
-) -> Result<Json<SubsonicResponse<()>>, AppError> {
+    Query(body): Query<CreatePlaylistRequest>,
+    Format(format): Format,
+) -> Result<ApiResponse<()>, AppError> {
     // 检查播放列表权限
     let permissions = crate::middleware::auth_middleware::get_user_permissions(&state.pool, &claims.sub)
         .await
@@ -108,16 +98,9 @@ pub async fn create_playlist(
     }
 
     // 调用 Service 层 (带事务保护)
-    state.playlist_service.create_playlist(&params.u, body).await?;
+    state.playlist_service.create_playlist(&claims.sub, body).await?;
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    }))
+    Ok(ApiResponse::ok(None, format))
 }
 
 /// POST /rest/updatePlaylist - 更新播放列表
@@ -125,8 +108,9 @@ pub async fn update_playlist(
     claims: crate::middleware::auth_middleware::Claims,
     axum::extract::State(state): axum::extract::State<PlaylistState>,
     Query(params): Query<PlaylistParams>,
-    Json(body): Json<UpdatePlaylistRequest>,
-) -> Result<Json<SubsonicResponse<()>>, AppError> {
+    Query(body): Query<UpdatePlaylistRequest>,
+    Format(format): Format,
+) -> Result<ApiResponse<()>, AppError> {
     // 检查播放列表权限
     let permissions = crate::middleware::auth_middleware::get_user_permissions(&state.pool, &claims.sub)
         .await
@@ -140,17 +124,10 @@ pub async fn update_playlist(
 
     // 调用 Service 层 (带事务保护,包含权限检查)
     state.playlist_service
-        .update_playlist(&playlist_id, &params.u, body)
+        .update_playlist(&playlist_id, &claims.sub, body)
         .await?;
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    }))
+    Ok(ApiResponse::ok(None, format))
 }
 
 /// POST /rest/deletePlaylist - 删除播放列表
@@ -158,7 +135,8 @@ pub async fn delete_playlist(
     claims: crate::middleware::auth_middleware::Claims,
     axum::extract::State(state): axum::extract::State<PlaylistState>,
     Query(params): Query<PlaylistParams>,
-) -> Result<Json<SubsonicResponse<()>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<()>, AppError> {
     // 检查播放列表权限
     let permissions = crate::middleware::auth_middleware::get_user_permissions(&state.pool, &claims.sub)
         .await
@@ -172,17 +150,10 @@ pub async fn delete_playlist(
 
     // 调用 Service 层 (包含权限检查)
     state.playlist_service
-        .delete_playlist(&playlist_id, &params.u)
+        .delete_playlist(&playlist_id, &claims.sub)
         .await?;
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    }))
+    Ok(ApiResponse::ok(None, format))
 }
 
 /// POST /rest/appendPlaylist - 追加歌曲到播放列表
@@ -190,8 +161,9 @@ pub async fn append_playlist(
     claims: crate::middleware::auth_middleware::Claims,
     axum::extract::State(state): axum::extract::State<PlaylistState>,
     Query(params): Query<PlaylistParams>,
-    Json(body): Json<CreatePlaylistRequest>,
-) -> Result<Json<SubsonicResponse<()>>, AppError> {
+    Query(body): Query<CreatePlaylistRequest>,
+    Format(format): Format,
+) -> Result<ApiResponse<()>, AppError> {
     // 检查播放列表权限
     let permissions = crate::middleware::auth_middleware::get_user_permissions(&state.pool, &claims.sub)
         .await
@@ -207,18 +179,11 @@ pub async fn append_playlist(
     if let Some(song_ids) = body.song_id {
         // 调用 Service 层 (带事务保护,包含权限检查)
         state.playlist_service
-            .append_songs(&playlist_id, &params.u, song_ids)
+            .append_songs(&playlist_id, &claims.sub, song_ids)
             .await?;
     }
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    }))
+    Ok(ApiResponse::ok(None, format))
 }
 
 pub fn routes() -> Router<PlaylistState> {

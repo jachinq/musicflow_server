@@ -1,56 +1,48 @@
 //! 用户管理端点处理器
 #![allow(dead_code)]
 
-use axum::{Json, Router, extract::Query, routing::{connect, get, post}};
+use axum::{Router, extract::Query, routing::{connect, get, post}};
 use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::error::AppError;
+use crate::extractors::Format;
 use crate::models::dto::{ChangePasswordRequest, CreateUserRequest, UpdateUserRequest};
-use crate::models::response::{ResponseContainer, SubsonicResponse, UserResponse, UsersResponse};
+use crate::models::response::{UserResponse, UsersResponse};
+use crate::response::ApiResponse;
 use crate::services::UserService;
 
 /// 通用用户参数
 #[derive(Debug, Deserialize)]
 pub struct UserParams {
     pub username: Option<String>,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// GET /rest/getUser - 获取用户信息
 pub async fn get_user(
     axum::extract::State(user_service): axum::extract::State<Arc<UserService>>,
     Query(params): Query<UserParams>,
-) -> Result<Json<SubsonicResponse<UserResponse>>, AppError> {
-    let username = params.username.as_deref().unwrap_or(&params.u);
+    Format(format): Format,
+) -> Result<ApiResponse<UserResponse>, AppError> {
+    let username = params.username.as_deref().ok_or_else(|| AppError::missing_parameter("username"))?;
 
     // 调用 Service 层
     let user = user_service.get_user(username).await?;
     let user_response: UserResponse = user.into();
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(user_response),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(user_response), format))
 }
 
 /// GET /rest/getUsers - 获取所有用户(仅管理员)
 pub async fn get_users(
     axum::extract::State(user_service): axum::extract::State<Arc<UserService>>,
-    Query(params): Query<UserParams>,
-) -> Result<Json<SubsonicResponse<UsersResponse>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<UsersResponse>, AppError> {
+    // TODO: 需要从认证中间件获取当前用户名
+    let current_user = "admin"; // 临时硬编码,后续需从认证中间件获取
+
     // 调用 Service 层 (包含权限检查)
-    let users = user_service.get_all_users(&params.u).await?;
+    let users = user_service.get_all_users(current_user).await?;
 
     let user_responses: Vec<UserResponse> = users.into_iter().map(|u| u.into()).collect();
 
@@ -58,99 +50,78 @@ pub async fn get_users(
         users: user_responses,
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// POST /rest/createUser - 创建用户(仅管理员)
 pub async fn create_user(
     axum::extract::State(user_service): axum::extract::State<Arc<UserService>>,
-    Query(params): Query<UserParams>,
-    Json(body): Json<CreateUserRequest>,
-) -> Result<Json<SubsonicResponse<()>>, AppError> {
-    // 调用 Service 层 (包含权限检查和用户存在性检查)
-    user_service.create_user(&params.u, body).await?;
+    Query(body): Query<CreateUserRequest>,
+    Format(format): Format,
+) -> Result<ApiResponse<()>, AppError> {
+    // TODO: 需要从认证中间件获取当前用户名
+    let current_user = "admin"; // 临时硬编码
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    }))
+    // 调用 Service 层 (包含权限检查和用户存在性检查)
+    user_service.create_user(current_user, body).await?;
+
+    Ok(ApiResponse::ok(None, format))
 }
 
 /// POST /rest/deleteUser - 删除用户(仅管理员)
 pub async fn delete_user(
     axum::extract::State(user_service): axum::extract::State<Arc<UserService>>,
     Query(params): Query<UserParams>,
-) -> Result<Json<SubsonicResponse<()>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<()>, AppError> {
     let username = params
         .username
         .ok_or_else(|| AppError::missing_parameter("username"))?;
 
-    // 调用 Service 层 (包含权限检查和自删除检查)
-    user_service.delete_user(&params.u, &username).await?;
+    // TODO: 需要从认证中间件获取当前用户名
+    let current_user = "admin"; // 临时硬编码
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    }))
+    // 调用 Service 层 (包含权限检查和自删除检查)
+    user_service.delete_user(current_user, &username).await?;
+
+    Ok(ApiResponse::ok(None, format))
 }
 
 /// POST /rest/updateUser - 更新用户(仅管理员)
 pub async fn update_user(
     axum::extract::State(user_service): axum::extract::State<Arc<UserService>>,
     Query(params): Query<UserParams>,
-    Json(body): Json<UpdateUserRequest>,
-) -> Result<Json<SubsonicResponse<()>>, AppError> {
+    Query(body): Query<UpdateUserRequest>,
+    Format(format): Format,
+) -> Result<ApiResponse<()>, AppError> {
     let username = params
         .username
         .ok_or_else(|| AppError::missing_parameter("username"))?;
 
-    // 调用 Service 层 (包含权限检查和动态SQL构建)
-    user_service.update_user(&params.u, &username, body).await?;
+    // TODO: 需要从认证中间件获取当前用户名
+    let current_user = "admin"; // 临时硬编码
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    }))
+    // 调用 Service 层 (包含权限检查和动态SQL构建)
+    user_service.update_user(current_user, &username, body).await?;
+
+    Ok(ApiResponse::ok(None, format))
 }
 
 /// POST /rest/changePassword - 修改密码
 pub async fn change_password(
     axum::extract::State(user_service): axum::extract::State<Arc<UserService>>,
-    Query(params): Query<UserParams>,
-    Json(body): Json<ChangePasswordRequest>,
-) -> Result<Json<SubsonicResponse<()>>, AppError> {
+    Query(body): Query<ChangePasswordRequest>,
+    Format(format): Format,
+) -> Result<ApiResponse<()>, AppError> {
+    // TODO: 需要从认证中间件获取当前用户名
+    let current_user = "admin"; // 临时硬编码
+
     // 调用 Service 层 (包含权限检查)
     user_service
-        .change_password(&params.u, &body.username, &body.password)
+        .change_password(current_user, &body.username, &body.password)
         .await?;
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    }))
+    Ok(ApiResponse::ok(None, format))
 }
 
 pub fn routes() -> Router<Arc<UserService>> {

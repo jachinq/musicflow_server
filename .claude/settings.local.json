@@ -15,7 +15,8 @@
       "Bash(curl:*)",
       "Bash(cargo build:*)",
       "Bash(sqlite3:*)",
-      "Bash(cargo run:*)"
+      "Bash(cargo run:*)",
+      "Bash(find:*)"
     ]
   }
 }

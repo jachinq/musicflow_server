@@ -238,7 +238,7 @@
                 const data = await apiCall('/api/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
+                    body: JSON.stringify({ username, password, f: "json" })
                 });
 
                 localStorage.setItem('username', username);
@@ -264,7 +264,8 @@
             getAuthParams() {
                 const u = localStorage.getItem('username');
                 const p = localStorage.getItem('password');
-                return `u=${encodeURIComponent(u)}&p=${encodeURIComponent(p)}&v=1.16.1&c=WebPanel`;
+                const f = "json";
+                return `u=${encodeURIComponent(u)}&p=${encodeURIComponent(p)}&v=1.16.1&c=WebPanel&f=${f}`;
             },
 
             buildApiUrl(endpoint) {
@@ -353,7 +354,7 @@
                 await apiCall(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(userData)
+                    body: JSON.stringify({...userData, f: "json"})
                 });
             },
 
@@ -362,7 +363,7 @@
                 await apiCall(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username })
+                    body: JSON.stringify({ username, f: "json" })
                 });
             },
 
@@ -371,7 +372,7 @@
                 await apiCall(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
+                    body: JSON.stringify({ username, password, f: "json" })
                 });
             },
 

@@ -11,6 +11,8 @@ use serde::Deserialize;
 use crate::services::{AuthService, UserWithToken};
 use crate::models::dto::{CreateUserRequest, LoginRequest};
 use crate::error::AppError;
+use crate::extractors::Format;
+use crate::response::ApiResponse;
 use std::sync::Arc;
 
 /// 注册请求参数
@@ -74,7 +76,8 @@ pub async fn login(
 pub async fn verify_subsonic_auth(
     axum::extract::State(auth_service): axum::extract::State<Arc<AuthService>>,
     Query(params): Query<SubsonicAuthParams>,
-) -> Result<Json<serde_json::Value>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<()>, AppError> {
     // 验证认证
     if let Some(token) = params.t {
         if let Some(salt) = params.s {
@@ -91,10 +94,7 @@ pub async fn verify_subsonic_auth(
     }
 
     // 返回成功响应
-    Ok(Json(serde_json::json!({
-        "status": "ok",
-        "version": "1.16.1"
-    })))
+    Ok(ApiResponse::ok(None, format))
 }
 
 /// 生成 Subsonic 认证凭据

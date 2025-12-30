@@ -128,11 +128,41 @@ pub struct SimilarArtists {
 pub struct LyricsResponse {
     pub lyrics: Lyrics,
 }
+
+impl ToXml for LyricsResponse {
+    fn to_xml_element(&self) -> String {
+        self.lyrics.to_xml_element()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lyrics {
     pub artist: Option<String>,
     pub title: Option<String>,
     pub text: Option<String>,
+}
+
+impl ToXml for Lyrics {
+    fn to_xml_element(&self) -> String {
+        let mut xml = String::from("<lyrics");
+
+        if let Some(artist) = &self.artist {
+            xml.push_str(&format!(r#" artist="{}""#, html_escape(artist)));
+        }
+        if let Some(title) = &self.title {
+            xml.push_str(&format!(r#" title="{}""#, html_escape(title)));
+        }
+
+        if let Some(text) = &self.text {
+            xml.push('>');
+            xml.push_str(&html_escape(text));
+            xml.push_str("</lyrics>");
+        } else {
+            xml.push_str("/>");
+        }
+
+        xml
+    }
 }
 
 /// 聊天消息
@@ -202,6 +232,132 @@ pub struct Captions {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hls {
     pub url: String,
+}
+
+// ============================================================================
+// ToXml 实现
+// ============================================================================
+
+/// NowPlaying ToXml 实现
+impl ToXml for NowPlaying {
+    fn to_xml_element(&self) -> String {
+        let mut xml = String::from("<nowPlaying>");
+
+        for entry in &self.entries {
+            xml.push_str(&entry.to_xml_element());
+        }
+
+        xml.push_str("</nowPlaying>");
+        xml
+    }
+}
+
+/// NowPlayingEntry ToXml 实现
+impl ToXml for NowPlayingEntry {
+    fn to_xml_element(&self) -> String {
+        format!(
+            r#"<entry id="{}" title="{}" artist="{}" username="{}" minutesAgo="{}"/>"#,
+            html_escape(&self.id),
+            html_escape(&self.title),
+            html_escape(&self.artist),
+            html_escape(&self.username),
+            self.minutes_ago
+        )
+    }
+}
+
+/// ChatMessages ToXml 实现
+impl ToXml for ChatMessages {
+    fn to_xml_element(&self) -> String {
+        let mut xml = String::from("<chatMessages>");
+
+        for message in &self.messages {
+            xml.push_str(&message.to_xml_element());
+        }
+
+        xml.push_str("</chatMessages>");
+        xml
+    }
+}
+
+/// ChatMessage ToXml 实现
+impl ToXml for ChatMessage {
+    fn to_xml_element(&self) -> String {
+        format!(
+            r#"<chatMessage username="{}" time="{}" message="{}"/>"#,
+            html_escape(&self.username),
+            self.time,
+            html_escape(&self.message)
+        )
+    }
+}
+
+/// Videos ToXml 实现
+impl ToXml for Videos {
+    fn to_xml_element(&self) -> String {
+        let mut xml = String::from("<videos>");
+
+        for video in &self.videos {
+            xml.push_str(&video.to_xml_element());
+        }
+
+        xml.push_str("</videos>");
+        xml
+    }
+}
+
+/// Video ToXml 实现
+impl ToXml for Video {
+    fn to_xml_element(&self) -> String {
+        format!(
+            r#"<video id="{}" title="{}" contentType="{}"/>"#,
+            html_escape(&self.id),
+            html_escape(&self.title),
+            html_escape(&self.content_type)
+        )
+    }
+}
+
+/// VideoInfo ToXml 实现
+impl ToXml for VideoInfo {
+    fn to_xml_element(&self) -> String {
+        let mut xml = format!(
+            r#"<videoInfo id="{}" title="{}""#,
+            html_escape(&self.id),
+            html_escape(&self.title)
+        );
+
+        if let Some(captions) = &self.captions {
+            xml.push('>');
+            xml.push_str(&captions.to_xml_element());
+            xml.push_str("</videoInfo>");
+        } else {
+            xml.push_str("/>");
+        }
+
+        xml
+    }
+}
+
+/// Captions ToXml 实现
+impl ToXml for Captions {
+    fn to_xml_element(&self) -> String {
+        format!(
+            r#"<captions id="{}" label="{}"/>"#,
+            html_escape(&self.id),
+            html_escape(&self.label)
+        )
+    }
+}
+
+/// Hls ToXml 实现
+impl ToXml for Hls {
+    fn to_xml_element(&self) -> String {
+        format!(
+            r#"<hls url="{}"/>"#,
+            html_escape(&self.url)
+        )
+    }
 }
 
 // 通用响应类型
@@ -294,8 +450,11 @@ impl<T: ToXml> SubsonicResponse<T> {
 >");
         }
 
-        // format!(r#"<?xml version="1.0" encoding="UTF-8"?>{}"#, xml)
-        xml
+        format!(r#"<?xml version="1.0" encoding="UTF-8"?>
+        
+        {}
+        "#, xml)
+        // xml
     }
 }
 
@@ -306,4 +465,79 @@ fn html_escape(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+// ========== 额外的 ToXml 实现 ==========
+
+impl ToXml for Directory {
+    fn to_xml_element(&self) -> String {
+        let mut xml = format!(r#"<directory id="{}" name="{}""#, self.id, self.name);
+        if let Some(parent) = &self.parent {
+            xml.push_str(&format!(r#" parent="{}""#, parent));
+        }
+        xml.push('>');
+        for child in &self.child {
+            xml.push_str(&child.to_xml_element());
+        }
+        xml.push_str("</directory>");
+        xml
+    }
+}
+
+impl ToXml for Child {
+    fn to_xml_element(&self) -> String {
+        let mut xml = format!(
+            r#"<child id="{}" title="{}" isDir="{}""#,
+            self.id, self.title, self.is_dir
+        );
+        if let Some(artist) = &self.artist {
+            xml.push_str(&format!(r#" artist="{}""#, artist));
+        }
+        if let Some(album) = &self.album {
+            xml.push_str(&format!(r#" album="{}""#, album));
+        }
+        if let Some(cover_art) = &self.cover_art {
+            xml.push_str(&format!(r#" coverArt="{}""#, cover_art));
+        }
+        if let Some(duration) = self.duration {
+            xml.push_str(&format!(r#" duration="{}""#, duration));
+        }
+        if let Some(play_count) = self.play_count {
+            xml.push_str(&format!(r#" playCount="{}""#, play_count));
+        }
+        xml.push_str("/>");
+        xml
+    }
+}
+
+impl ToXml for ArtistInfo {
+    fn to_xml_element(&self) -> String {
+        let mut xml = String::from("<artistInfo");
+        if let Some(mbid) = &self.music_brainz_id {
+            xml.push_str(&format!(r#" musicBrainzId="{}""#, mbid));
+        }
+        if let Some(url) = &self.last_fm_url {
+            xml.push_str(&format!(r#" lastFmUrl="{}""#, url));
+        }
+        xml.push('>');
+        if let Some(bio) = &self.biography {
+            xml.push_str(&format!("<biography>{}</biography>", html_escape(bio)));
+        }
+        if let Some(similar) = &self.similar_artists {
+            xml.push_str(&similar.to_xml_element());
+        }
+        xml.push_str("</artistInfo>");
+        xml
+    }
+}
+
+impl ToXml for SimilarArtists {
+    fn to_xml_element(&self) -> String {
+        let mut xml = String::from("<similarArtists>");
+        for artist in &self.artists {
+            xml.push_str(&artist.to_xml_element());
+        }
+        xml.push_str("</similarArtists>");
+        xml
+    }
 }

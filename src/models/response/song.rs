@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use crate::models::dto::{SongDto, SongDetailDto};
+use super::ToXml;
 
 /// 歌曲响应 (Subsonic 格式)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,4 +127,95 @@ pub struct SongsResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SongResponse {
     pub song: Song,
+}
+
+// ========== XML 序列化实现 ==========
+
+impl ToXml for Song {
+    fn to_xml_element(&self) -> String {
+        let mut xml = format!(
+            r#"<song id="{}" title="{}" artist="{}" album="{}" duration="{}" contentType="{}""#,
+            self.id, self.title, self.artist, self.album, self.duration, self.content_type
+        );
+        if let Some(genre) = &self.genre {
+            xml.push_str(&format!(r#" genre="{}""#, genre));
+        }
+        if let Some(year) = self.year {
+            xml.push_str(&format!(r#" year="{}""#, year));
+        }
+        if let Some(bit_rate) = self.bit_rate {
+            xml.push_str(&format!(r#" bitRate="{}""#, bit_rate));
+        }
+        if let Some(path) = &self.path {
+            xml.push_str(&format!(r#" path="{}""#, path));
+        }
+        if let Some(track_number) = self.track_number {
+            xml.push_str(&format!(r#" track="{}""#, track_number));
+        }
+        if let Some(disc_number) = self.disc_number {
+            xml.push_str(&format!(r#" discNumber="{}""#, disc_number));
+        }
+        if let Some(cover_art) = &self.cover_art {
+            xml.push_str(&format!(r#" coverArt="{}""#, cover_art));
+        }
+        xml.push_str("/>");
+        xml
+    }
+}
+
+impl ToXml for RandomSongsResponse {
+    fn to_xml_element(&self) -> String {
+        self.random_songs.to_xml_element()
+    }
+}
+
+impl ToXml for RandomSongs {
+    fn to_xml_element(&self) -> String {
+        let mut xml = String::from("<randomSongs>");
+        for song in &self.song {
+            xml.push_str(&song.to_xml_element());
+        }
+        xml.push_str("</randomSongs>");
+        xml
+    }
+}
+
+impl ToXml for TopSongsResponse {
+    fn to_xml_element(&self) -> String {
+        self.top_songs.to_xml_element()
+    }
+}
+
+impl ToXml for TopSongs {
+    fn to_xml_element(&self) -> String {
+        let mut xml = String::from("<topSongs>");
+        for song in &self.song {
+            xml.push_str(&song.to_xml_element());
+        }
+        xml.push_str("</topSongs>");
+        xml
+    }
+}
+
+impl ToXml for SongsByGenreResponse {
+    fn to_xml_element(&self) -> String {
+        self.songs_by_genre.to_xml_element()
+    }
+}
+
+impl ToXml for SongsResponse {
+    fn to_xml_element(&self) -> String {
+        let mut xml = String::from("<songsByGenre>");
+        for song in &self.song {
+            xml.push_str(&song.to_xml_element());
+        }
+        xml.push_str("</songsByGenre>");
+        xml
+    }
+}
+
+impl ToXml for SongResponse {
+    fn to_xml_element(&self) -> String {
+        self.song.to_xml_element()
+    }
 }

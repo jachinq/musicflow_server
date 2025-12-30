@@ -67,14 +67,17 @@ async fn try_subsonic_auth(
 
     // 尝试密码认证 (p 参数)
     if let Some(password) = params.get("p") {
+        tracing::debug!("try subsonic auth with password username: {} password: {}", username, password);
         return authenticate_with_password(username, password, pool).await.ok();
     }
 
     // 尝试 token + salt 认证 (t + s 参数)
     if let (Some(token), Some(salt)) = (params.get("t"), params.get("s")) {
+        tracing::debug!("try subsonic auth with token username: {} token: {} salt: {}", username, token, salt);
         return authenticate_subsonic(username, token, salt, pool).await.ok();
     }
 
+    tracing::info!("try subsonic auth failed with query: {}", query);
     None
 }
 
@@ -125,9 +128,11 @@ async fn authenticate_subsonic(
 
     // 验证 token(不区分大小写)
     if !expected_token.eq_ignore_ascii_case(token) {
+        tracing::error!("subsonic token auth failed with username: {} expected_token: {} token: {}", username, expected_token, token);
         return Err(());
     }
 
+    tracing::debug!("subsonic token auth success with user: {:?} token: {}", user, token);
     Ok(user)
 }
 
@@ -165,6 +170,7 @@ pub async fn auth_middleware(
 
     // 尝试 Subsonic 查询参数认证
     if let Some(query) = req.uri().query() {
+        tracing::info!("uri:{} query: {}", req.uri(), query);
         if let Some(user) = try_subsonic_auth(query, &pool).await {
             // 创建 Claims 并添加到请求扩展中
             let claims = Claims {

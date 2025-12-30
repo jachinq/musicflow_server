@@ -2,58 +2,59 @@
 #![allow(dead_code)]
 
 use crate::error::AppError;
+use crate::extractors::Format;
 use crate::models::response::{
-    AlbumResponse, ArtistResponse, RatingResponse, ResponseContainer, Song, SubsonicResponse,
+    AlbumResponse, ArtistResponse, RatingResponse, Song, StarredResponse, ToXml,
 };
+use crate::response::ApiResponse;
 use crate::services::{LibraryService, ScanService, StarItemType};
 use axum::{
     extract::Query,
     routing::{get, post},
-    Json, Router,
+    Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 /// 扫描状态
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanStatusResponse {
     pub scan_status: ScanStatus,
 }
-#[derive(Debug, Serialize)]
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ScanStatus {
     scanning: bool,
     count: usize,
     current: usize,
 }
 
+// ========== XML 序列化实现 ==========
+
+impl ToXml for ScanStatusResponse {
+    fn to_xml_element(&self) -> String {
+        format!(
+            r#"<scanStatus scanning="{}" count="{}" current="{}"/>"#,
+            self.scan_status.scanning, self.scan_status.count, self.scan_status.current
+        )
+    }
+}
+
 /// 扫描请求参数
 #[derive(Debug, Deserialize)]
 pub struct ScanParams {
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
+    // 认证参数已由中间件处理,这里不需要
 }
 
 /// 收藏参数
 #[derive(Debug, Deserialize)]
 pub struct StarParams {
-    pub id: String,
+    pub id: Option<String>,
     pub artist_id: Option<String>,
     pub album_id: Option<String>,
     pub song_id: Option<String>,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// 评分参数
@@ -61,26 +62,12 @@ pub struct StarParams {
 pub struct SetRatingParams {
     pub id: String,
     pub rating: i32,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// 获取评分参数
 #[derive(Debug, Deserialize)]
 pub struct GetRatingParams {
     pub id: String,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// Scrobble 参数
@@ -89,13 +76,6 @@ pub struct ScrobbleParams {
     pub id: String,
     pub submission: Option<bool>,
     pub time: Option<i64>,
-    pub u: String,
-    pub t: Option<String>,
-    pub s: Option<String>,
-    pub p: Option<String>,
-    pub v: String,
-    pub c: String,
-    pub f: Option<String>,
 }
 
 /// 扫描状态（共享）
@@ -118,33 +98,30 @@ pub struct LibraryState {
 /// GET /rest/getScanStatus
 pub async fn get_scan_status(
     axum::extract::State(state): axum::extract::State<LibraryState>,
-) -> Result<Json<SubsonicResponse<ScanStatusResponse>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<ScanStatusResponse>, AppError> {
     let scanning = *state.scan_state.scanning.lock().await;
-    // let count = *state.scan_state.count.lock().await;
-    // let current = *state.scan_state.current.lock().await;
 
     // 从 service 层获取歌曲总数
     let count = state.library_service.get_song_count().await?;
 
     let result = ScanStatusResponse {
-        scan_status: ScanStatus { scanning, count, current: 0 },
+        scan_status: ScanStatus {
+            scanning,
+            count,
+            current: 0,
+        },
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// POST /rest/startScan
 pub async fn start_scan(
     axum::extract::State(state): axum::extract::State<LibraryState>,
     _params: Query<ScanParams>,
-) -> Result<Json<SubsonicResponse<()>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<()>, AppError> {
     let mut scanning = state.scan_state.scanning.lock().await;
     if *scanning {
         return Err(AppError::server_busy("Scan already in progress"));
@@ -169,14 +146,7 @@ pub async fn start_scan(
         *scanning = false;
     });
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    }))
+    Ok(ApiResponse::ok(None, format))
 }
 
 /// POST /rest/scrobble
@@ -184,7 +154,8 @@ pub async fn scrobble(
     claims: crate::middleware::auth_middleware::Claims,
     axum::extract::State(state): axum::extract::State<LibraryState>,
     Query(params): Query<ScrobbleParams>,
-) -> Result<Json<SubsonicResponse<()>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<()>, AppError> {
     // 检查Scrobble权限
     let permissions =
         crate::middleware::auth_middleware::get_user_permissions(&state.pool, &claims.sub)
@@ -206,14 +177,7 @@ pub async fn scrobble(
         .submit_scrobble(&claims.sub, &params.id, timestamp, submission)
         .await?;
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    }))
+    Ok(ApiResponse::ok(None, format))
 }
 
 /// POST /rest/star
@@ -221,7 +185,8 @@ pub async fn star(
     claims: crate::middleware::auth_middleware::Claims,
     axum::extract::State(state): axum::extract::State<LibraryState>,
     Query(params): Query<StarParams>,
-) -> Result<Json<SubsonicResponse<()>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<()>, AppError> {
     let user_id = &claims.sub;
 
     // 确定收藏类型和 ID
@@ -231,6 +196,9 @@ pub async fn star(
         (StarItemType::Album, album_id)
     } else if let Some(song_id) = params.song_id {
         (StarItemType::Song, song_id)
+    } else if let Some(id) = params.id {
+        // 默认作为歌曲ID处理
+        (StarItemType::Song, id)
     } else {
         return Err(AppError::missing_parameter(
             "id or artist_id/album_id/song_id",
@@ -243,14 +211,7 @@ pub async fn star(
         .star_item(user_id, item_type, &item_id)
         .await?;
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    }))
+    Ok(ApiResponse::ok(None, format))
 }
 
 /// POST /rest/unstar
@@ -258,7 +219,8 @@ pub async fn unstar(
     claims: crate::middleware::auth_middleware::Claims,
     axum::extract::State(state): axum::extract::State<LibraryState>,
     Query(params): Query<StarParams>,
-) -> Result<Json<SubsonicResponse<()>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<()>, AppError> {
     let user_id = &claims.sub;
 
     // 确定收藏类型和 ID
@@ -268,6 +230,9 @@ pub async fn unstar(
         (StarItemType::Album, album_id)
     } else if let Some(song_id) = params.song_id {
         (StarItemType::Song, song_id)
+    } else if let Some(id) = params.id {
+        // 默认作为歌曲ID处理
+        (StarItemType::Song, id)
     } else {
         return Err(AppError::missing_parameter(
             "id or artist_id/album_id/song_id",
@@ -280,14 +245,7 @@ pub async fn unstar(
         .unstar_item(user_id, item_type, &item_id)
         .await?;
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    }))
+    Ok(ApiResponse::ok(None, format))
 }
 
 /// POST /rest/setRating
@@ -295,7 +253,8 @@ pub async fn set_rating(
     claims: crate::middleware::auth_middleware::Claims,
     axum::extract::State(state): axum::extract::State<LibraryState>,
     Query(params): Query<SetRatingParams>,
-) -> Result<Json<SubsonicResponse<()>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<()>, AppError> {
     let user_id = &claims.sub;
 
     // 调用 Service 层 (包含验证逻辑)
@@ -304,14 +263,7 @@ pub async fn set_rating(
         .set_rating(user_id, &params.id, params.rating)
         .await?;
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: None,
-        },
-    }))
+    Ok(ApiResponse::ok(None, format))
 }
 
 /// GET /rest/getRating
@@ -319,7 +271,8 @@ pub async fn get_rating(
     claims: crate::middleware::auth_middleware::Claims,
     axum::extract::State(state): axum::extract::State<LibraryState>,
     Query(params): Query<GetRatingParams>,
-) -> Result<Json<SubsonicResponse<RatingResponse>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<RatingResponse>, AppError> {
     let user_id = &claims.sub;
 
     // 调用 Service 层
@@ -333,14 +286,7 @@ pub async fn get_rating(
         rating: rating.unwrap_or(0),
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 /// GET /rest/getStarred
@@ -348,13 +294,14 @@ pub async fn get_starred(
     claims: crate::middleware::auth_middleware::Claims,
     axum::extract::State(state): axum::extract::State<LibraryState>,
     _params: Query<ScanParams>,
-) -> Result<Json<SubsonicResponse<crate::models::response::StarredResponse>>, AppError> {
+    Format(format): Format,
+) -> Result<ApiResponse<StarredResponse>, AppError> {
     let user_id = &claims.sub;
 
     // 调用 Service 层 (并行查询三个表)
     let starred_items = state.library_service.get_starred_items(user_id).await?;
 
-    let result = crate::models::response::StarredResponse {
+    let result = StarredResponse {
         artist: if starred_items.artists.is_empty() {
             None
         } else {
@@ -372,14 +319,7 @@ pub async fn get_starred(
         },
     };
 
-    Ok(Json(SubsonicResponse {
-        response: ResponseContainer {
-            status: "ok".to_string(),
-            version: "1.16.1".to_string(),
-            error: None,
-            data: Some(result),
-        },
-    }))
+    Ok(ApiResponse::ok(Some(result), format))
 }
 
 pub fn routes(
