@@ -94,12 +94,14 @@ http://你的服务器.com/rest/
 ## 响应格式
 
 ### XML 响应（默认）
+
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
     <!-- 响应数据 -->
 </subsonic-response>
 ```
+
 
 ### JSON 响应
 ```json
@@ -174,12 +176,39 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<indexes lastModified="1234567890">
-    <index name="A">
-        <artist id="123" name="艺术家名称"/>
-    </index>
-</indexes>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <indexes lastModified="1234567890">
+        <index name="A">
+            <artist id="123" name="艺术家名称"/>
+        </index>
+    </indexes>
+</subsonic-response>
 ```
+
+```json
+{
+  "subsonic-response": {
+    "status": "ok",
+    "version": "1.16.1",
+    "indexes": {
+      "lastModified": 1234567890,
+      "index": [
+        {
+          "name": "A",
+          "artist": [
+            {
+              "id": "123",
+              "name": "艺术家名称"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
 
 ### getMusicDirectory
 返回音乐目录中的文件列表。
@@ -191,9 +220,12 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<directory id="123" name="目录名称">
-    <child id="124" title="歌曲" artist="艺术家" album="专辑" isDir="false"/>
-</directory>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <directory id="123" name="目录名称">
+        <child id="124" title="歌曲" artist="艺术家" album="专辑" isDir="false"/>
+    </directory>
+</subsonic-response>
 ```
 
 ### getGenres
@@ -205,9 +237,12 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<genres>
-    <genre songCount="28" albumCount="6">Electronic</genre>
-</genres>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <genres>
+        <genre songCount="28" albumCount="6">Electronic</genre>
+    </genres>
+</subsonic-response>
 ```
 
 ### getArtists
@@ -221,15 +256,18 @@ http://你的服务器.com/rest/
 
 **响应：**  
 ```xml
-<artists ignoredArticles="The El La Los Las Le Les">
-    <index name="A">
-        <artist id="6633" name="Aaron Neville" coverArt="ar-6633" albumCount="1"/>
-    </index>
-    <index name="B">
-        <artist id="5950" name="Bob Marley" coverArt="ar-5950" albumCount="8"/>
-        <artist id="5957" name="Bruce Dickinson" coverArt="ar-5957" albumCount="2"/>
-    </index>
-</artists>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <artists ignoredArticles="The El La Los Las Le Les">
+        <index name="A">
+            <artist id="6633" name="Aaron Neville" coverArt="ar-6633" albumCount="1"/>
+        </index>
+        <index name="B">
+            <artist id="5950" name="Bob Marley" coverArt="ar-5950" albumCount="8"/>
+            <artist id="5957" name="Bruce Dickinson" coverArt="ar-5957" albumCount="2"/>
+        </index>
+    </artists>
+</subsonic-response>
 ```
 
 ### getArtist
@@ -242,9 +280,12 @@ http://你的服务器.com/rest/
 
 **响应：**  
 ```xml
-<artist id="123" name="艺术家名称" albumCount="5">
-    <album id="124" name="专辑名称" artist="艺术家名称" coverArt="124"/>
-</artist>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <artist id="123" name="艺术家名称" albumCount="5">
+        <album id="124" name="专辑名称" artist="艺术家名称" coverArt="124"/>
+    </artist>
+</subsonic-response>
 ```
 
 ### getAlbum
@@ -257,9 +298,12 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<album id="123" name="专辑名称" artist="艺术家名称" coverArt="123" songCount="10">
-    <song id="124" title="歌曲标题" artist="艺术家名称" album="专辑名称" duration="240"/>
-</album>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <album id="123" name="专辑名称" artist="艺术家名称" coverArt="123" songCount="10">
+        <song id="124" title="歌曲标题" artist="艺术家名称" album="专辑名称" duration="240"/>
+    </album>
+</subsonic-response>
 ```
 
 ### getSong
@@ -272,9 +316,12 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<song id="123" title="歌曲标题" artist="艺术家名称" album="专辑名称"
-      genre="摇滚" year="2020" duration="240" bitRate="320"
-      contentType="audio/mpeg" path="艺术家/专辑/歌曲.mp3"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <song id="123" title="歌曲标题" artist="艺术家名称" album="专辑名称"
+        genre="摇滚" year="2020" duration="240" bitRate="320"
+        contentType="audio/mpeg" path="艺术家/专辑/歌曲.mp3"/>
+</subsonic-response>
 ```
 
 ### getVideos
@@ -285,9 +332,12 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<videos>
-    <video id="123" title="视频标题" contentType="video/mp4"/>
-</videos>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <videos>
+        <video id="123" title="视频标题" contentType="video/mp4"/>
+    </videos>
+</subsonic-response>
 ```
 
 ### getVideoInfo
@@ -300,9 +350,12 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<videoInfo id="123" title="视频标题">
-    <captions id="124" label="英语"/>
-</videoInfo>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <videoInfo id="123" title="视频标题">
+        <captions id="124" label="英语"/>
+    </videoInfo>
+</subsonic-response>
 ```
 
 ### getArtistInfo
@@ -317,14 +370,17 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<artistInfo>
-    <biography>艺术家传记文本...</biography>
-    <musicBrainzId>mbid</musicBrainzId>
-    <lastFmUrl>http://last.fm/...</lastFmUrl>
-    <similarArtists>
-        <artist id="124" name="相似艺术家"/>
-    </similarArtists>
-</artistInfo>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <artistInfo>
+        <biography>艺术家传记文本...</biography>
+        <musicBrainzId>mbid</musicBrainzId>
+        <lastFmUrl>http://last.fm/...</lastFmUrl>
+        <similarArtists>
+            <artist id="124" name="相似艺术家"/>
+        </similarArtists>
+    </artistInfo>
+</subsonic-response>
 ```
 
 ### getArtistInfo2
@@ -355,9 +411,12 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<albumList>
-    <album id="123" name="专辑名称" artist="艺术家名称" coverArt="123"/>
-</albumList>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <albumList>
+        <album id="123" name="专辑名称" artist="艺术家名称" coverArt="123"/>
+    </albumList>
+</subsonic-response>
 ```
 
 ### getTopSongs
@@ -372,11 +431,14 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<topSongs>
-    <song id="123" title="歌曲标题" artist="艺术家名称" album="专辑名称"
-      genre="摇滚" year="2020" duration="240" bitRate="320"
-      contentType="audio/mpeg" path="艺术家/专辑/歌曲.mp3"/>
-</topSongs>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <topSongs>
+        <song id="123" title="歌曲标题" artist="艺术家名称" album="专辑名称"
+        genre="摇滚" year="2020" duration="240" bitRate="320"
+        contentType="audio/mpeg" path="艺术家/专辑/歌曲.mp3"/>
+    </topSongs>
+</subsonic-response>
 ```
 
 ### getAlbumList2
@@ -387,11 +449,14 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<albumList2>
-    <album id="123" name="专辑名称" artist="艺术家名称" artistId="456"
-           coverArt="123" songCount="10" created="2020-01-01T00:00:00Z"
-           duration="3600" playCount="100" year="2020" genre="摇滚"/>
-</albumList2>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <albumList2>
+        <album id="123" name="专辑名称" artist="艺术家名称" artistId="456"
+            coverArt="123" songCount="10" created="2020-01-01T00:00:00Z"
+            duration="3600" playCount="100" year="2020" genre="摇滚"/>
+    </albumList2>
+</subsonic-response>
 ```
 
 ### getRandomSongs
@@ -408,9 +473,12 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<randomSongs>
-    <song id="123" title="歌曲标题" artist="艺术家" album="专辑" duration="240"/>
-</randomSongs>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <randomSongs>
+        <song id="123" title="歌曲标题" artist="艺术家" album="专辑" duration="240"/>
+    </randomSongs>
+</subsonic-response>
 ```
 
 ### getSongsByGenre
@@ -428,11 +496,14 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<songsByGenre>
-    <song id="123" title="歌曲标题" artist="艺术家名称" album="专辑名称"
-      genre="摇滚" year="2020" duration="240" bitRate="320"
-      contentType="audio/mpeg" path="艺术家/专辑/歌曲.mp3"/>
-</songsByGenre>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <songsByGenre>
+        <song id="123" title="歌曲标题" artist="艺术家名称" album="专辑名称"
+        genre="摇滚" year="2020" duration="240" bitRate="320"
+        contentType="audio/mpeg" path="艺术家/专辑/歌曲.mp3"/>
+    </songsByGenre>
+</subsonic-response>
 ```
 
 ### getNowPlaying
@@ -443,9 +514,12 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<nowPlaying>
-    <entry id="123" title="歌曲" artist="艺术家" username="用户" minutesAgo="5"/>
-</nowPlaying>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <nowPlaying>
+        <entry id="123" title="歌曲" artist="艺术家" username="用户" minutesAgo="5"/>
+    </nowPlaying>
+</subsonic-response>
 ```
 
 ### getStarred
@@ -458,11 +532,14 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<starred>
-    <artist id="123" name="艺术家"/>
-    <album id="124" name="专辑" artist="艺术家"/>
-    <song id="125" title="歌曲" artist="艺术家" album="专辑"/>
-</starred>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <starred>
+        <artist id="123" name="艺术家"/>
+        <album id="124" name="专辑" artist="艺术家"/>
+        <song id="125" title="歌曲" artist="艺术家" album="专辑"/>
+    </starred>
+</subsonic-response>
 ```
 
 ### getStarred2
@@ -473,11 +550,14 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<starred2>
-    <artist id="123" name="艺术家" coverArt="123" albumCount="5"/>
-    <album id="124" name="专辑" artist="艺术家" coverArt="124" songCount="10"/>
-    <song id="125" title="歌曲" artist="艺术家" album="专辑" duration="240"/>
-</starred2>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <starred2>
+        <artist id="123" name="艺术家" coverArt="123" albumCount="5"/>
+        <album id="124" name="专辑" artist="艺术家" coverArt="124" songCount="10"/>
+        <song id="125" title="歌曲" artist="艺术家" album="专辑" duration="240"/>
+    </starred2>
+</subsonic-response>
 ```
 
 ---
@@ -499,11 +579,14 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<searchResult>
-    <artist id="123" name="艺术家"/>
-    <album id="124" name="专辑" artist="艺术家"/>
-    <song id="125" title="歌曲" artist="艺术家" album="专辑"/>
-</searchResult>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <searchResult>
+        <artist id="123" name="艺术家"/>
+        <album id="124" name="专辑" artist="艺术家"/>
+        <song id="125" title="歌曲" artist="艺术家" album="专辑"/>
+    </searchResult>
+</subsonic-response>
 ```
 
 ### search2
@@ -522,11 +605,14 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<searchResult2>
-    <artist id="123" name="艺术家"/>
-    <album id="124" name="专辑" artist="艺术家"/>
-    <song id="125" title="歌曲" artist="艺术家" album="专辑"/>
-</searchResult2>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <searchResult2>
+        <artist id="123" name="艺术家"/>
+        <album id="124" name="专辑" artist="艺术家"/>
+        <song id="125" title="歌曲" artist="艺术家" album="专辑"/>
+    </searchResult2>
+</subsonic-response>
 ```
 
 ### search3
@@ -545,11 +631,14 @@ http://你的服务器.com/rest/
 
 **响应：**
 ```xml
-<searchResult3>
-    <artist id="123" name="艺术家" coverArt="123" albumCount="5"/>
-    <album id="124" name="专辑" artist="艺术家" coverArt="124" songCount="10"/>
-    <song id="125" title="歌曲" artist="艺术家" album="专辑" duration="240"/>
-</searchResult3>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <searchResult3>
+        <artist id="123" name="艺术家" coverArt="123" albumCount="5"/>
+        <album id="124" name="专辑" artist="艺术家" coverArt="124" songCount="10"/>
+        <song id="125" title="歌曲" artist="艺术家" album="专辑" duration="240"/>
+    </searchResult3>
+</subsonic-response>
 ```
 
 ---
@@ -609,9 +698,12 @@ HLS 播放列表数据
 
 **响应：**
 ```xml
-<playlists>
-    <playlist id="123" name="我的播放列表" owner="用户名" public="false" songCount="10"/>
-</playlists>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <playlists>
+        <playlist id="123" name="我的播放列表" owner="用户名" public="false" songCount="10"/>
+    </playlists>
+</subsonic-response>
 ```
 
 ### getPlaylist
@@ -624,9 +716,12 @@ HLS 播放列表数据
 
 **响应：**
 ```xml
-<playlist id="123" name="我的播放列表" owner="用户名" public="false" songCount="10" duration="3600">
-    <entry id="124" title="歌曲" artist="艺术家" album="专辑" duration="240"/>
-</playlist>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <playlist id="123" name="我的播放列表" owner="用户名" public="false" songCount="10" duration="3600">
+        <entry id="124" title="歌曲" artist="艺术家" album="专辑" duration="240"/>
+    </playlist>
+</subsonic-response>
 ```
 
 ### createPlaylist
@@ -639,8 +734,12 @@ HLS 播放列表数据
 | `songId` | 否 | 数组 | 要添加的歌曲 ID 数组 |
 
 **响应：**
+
 ```xml
-<playlist id="123" name="我的播放列表" owner="用户名" public="false" songCount="0"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+	<playlist id="123" name="我的播放列表" owner="用户名" public="false" songCount="0"/>
+</subsonic-response>
 ```
 
 ### updatePlaylist
@@ -697,7 +796,10 @@ HLS 播放列表数据
 
 **响应：**
 ```xml
-<lyrics artist="艺术家" title="歌曲">歌词文本...</lyrics>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+	<lyrics artist="艺术家" title="歌曲">歌词文本...</lyrics>
+</subsonic-response>
 ```
 
 ### getAvatar
@@ -776,7 +878,10 @@ HLS 播放列表数据
 
 **响应：**
 ```xml
-<rating id="123" rating="5"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+	<rating id="123" rating="5"/>
+</subsonic-response>
 ```
 
 ---
@@ -792,10 +897,14 @@ HLS 播放列表数据
 | `since` | 否 | Long | Unix 时间戳（毫秒） |
 
 **响应：**
+
 ```xml
-<chatMessages>
-    <message id="123" username="用户" message="你好" time="1234567890"/>
-</chatMessages>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <chatMessages>
+        <message id="123" username="用户" message="你好" time="1234567890"/>
+    </chatMessages>
+</subsonic-response>
 ```
 
 ### addChatMessage
@@ -823,12 +932,15 @@ HLS 播放列表数据
 
 **响应：**
 ```xml
-<user username="用户" email="user@example.com" admin="false"
-      scrobblingEnabled="true" maxBitRate="320"
-      downloadRole="true" uploadRole="false"
-      playlistRole="true" coverArtRole="true"
-      commentRole="false" podcastRole="false"
-      shareRole="true" videoConversionRole="false"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <user username="用户" email="user@example.com" admin="false"
+          scrobblingEnabled="true" maxBitRate="320"
+          downloadRole="true" uploadRole="false"
+          playlistRole="true" coverArtRole="true"
+          commentRole="false" podcastRole="false"
+          shareRole="true" videoConversionRole="false"/>
+</subsonic-response>
 ```
 
 ### getUsers
@@ -839,9 +951,12 @@ HLS 播放列表数据
 
 **响应：**
 ```xml
-<users>
-    <user username="用户" email="user@example.com" admin="false"/>
-</users>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <users>
+        <user username="用户" email="user@example.com" admin="false"/>
+    </users>
+</subsonic-response>
 ```
 
 ### createUser
@@ -913,7 +1028,10 @@ HLS 播放列表数据
 
 **响应：**
 ```xml
-<subsonic-response status="ok" version="1.16.1"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+	<subsonic-response status="ok" version="1.16.1"/>
+</subsonic-response>
 ```
 
 ### getLicense
@@ -924,7 +1042,10 @@ HLS 播放列表数据
 
 **响应：**
 ```xml
-<license valid="true" email="user@example.com" key="许可证密钥"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+	<license valid="true" email="user@example.com" key="许可证密钥"/>
+</subsonic-response>
 ```
 
 ### getSystemInfo
@@ -934,12 +1055,16 @@ HLS 播放列表数据
 无
 
 **响应：**
+
 ```xml
-<systemInfo>
-    <version>1.16.1</version>
-    <server>Subsonic</server>
-    <type>Subsonic</type>
-</systemInfo>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+    <systemInfo>
+        <version>1.16.1</version>
+        <server>Subsonic</server>
+        <type>Subsonic</type>
+    </systemInfo>
+</subsonic-response>
 ```
 
 ### getScanStatus
@@ -950,7 +1075,10 @@ HLS 播放列表数据
 
 **响应：**
 ```xml
-<scanStatus scanning="false" count="1000"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+	<scanStatus scanning="false" count="1000"/>
+</subsonic-response>
 ```
 
 ### startScan
@@ -961,7 +1089,10 @@ HLS 播放列表数据
 
 **响应：**
 ```xml
-<scanStatus scanning="true" count="0"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
+	<scanStatus scanning="true" count="0"/>
+</subsonic-response>
 ```
 
 ---
