@@ -6,6 +6,12 @@
 
 这是一个使用 Rust 实现的 Subsonic API 兼容服务器，支持音乐库管理、流媒体播放、播放列表等功能。
 
+可以使用 Subsonic API 客户端或第三方客户端访问，实现音乐流媒体播放、管理等功能。
+
+推荐使用
+- [MusicFlow](https://github.com/jachinq/musicflow)： 本项目配套使用的 web 客户端
+- [音流播放器](https://devmusic.aqzscn.cn/docs/intro)： 支持 Subsonic 协议的客户端
+
 ### 项目结构
 ```
 musicflow_server/
