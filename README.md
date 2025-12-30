@@ -1,6 +1,6 @@
 # Music Flow Server
 
-基于 Subsonic API 1.16.1 规范的 Rust 音乐流媒体服务器。
+基于 Subsonic API v1.16.1 规范的 Rust 音乐流媒体服务器。
 
 ## 🎯 项目概述
 
@@ -11,6 +11,12 @@
 推荐使用
 - [MusicFlow](https://github.com/jachinq/musicflow)： 本项目配套使用的 web 客户端
 - [音流播放器](https://devmusic.aqzscn.cn/docs/intro)： 支持 Subsonic 协议的客户端
+
+### 优势
+
+- **安全**： 基于 Rust 语言，安全可靠，无内存泄漏
+- **高性能**： 异步 IO 处理，高并发处理能力
+- **小体积**： 不到 20M 的打包体积，适合部署到服务器上
 
 ### 项目结构
 ```
@@ -27,7 +33,7 @@ musicflow_server/
 │   ├── services/            # 业务逻辑
 │   └── middleware/          # 中间件
 ├── migrations/              # 数据库迁移
-├── .env                     # 环境变量
+├── .env.example             # 环境变量
 ├── Cargo.toml               # 依赖配置
 └── README.md
 ```
@@ -71,7 +77,7 @@ cd musicflow_server
 cp .env.example .env
 # 编辑 .env 设置 MUSIC_LIBRARY_PATH
 
-# 3. 运行数据库迁移
+# 3. 运行数据库迁移(可跳过，启动项目会自动运行)
 touch music_flow.db
 DATABASE_URL=sqlite:data/music_flow.db
 sqlx migrate run
@@ -195,28 +201,6 @@ sqlite> .tables
 sqlite> SELECT * FROM users;
 sqlite> .schema users
 ```
-
-## 🎯 下一步计划
-
-### 阶段 2: 核心 API 端点
-实现 P0 级别的 10 个核心 API 端点，包括：
-- 系统端点 (ping, getLicense)
-- 浏览端点 (getIndexes, getArtist, getAlbum, getSong)
-- 搜索端点 (search3)
-- 流媒体端点 (stream, download)
-- 媒体检索端点 (getCoverArt)
-
-### 阶段 3: 音乐库扫描
-实现音乐库扫描服务，自动导入音频文件的元数据。
-
-### 阶段 4: 高级功能
-实现播放列表、收藏、评分、用户管理等功能。
-
-## 🐛 已知问题
-
-1. **编译时警告** - 大量未使用的代码警告，这是正常的，因为很多功能还未实现
-2. **文档测试失败** - 需要修复文档示例
-3. **音乐库路径** - 需要手动设置有效的音乐库路径
 
 ## 📚 参考资料
 
