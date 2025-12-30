@@ -170,7 +170,7 @@ pub async fn auth_middleware(
 
     // 尝试 Subsonic 查询参数认证
     if let Some(query) = req.uri().query() {
-        tracing::info!("uri:{} query: {}", req.uri(), query);
+        // tracing::info!("try subsonic auth with query");
         if let Some(user) = try_subsonic_auth(query, &pool).await {
             // 创建 Claims 并添加到请求扩展中
             let claims = Claims {

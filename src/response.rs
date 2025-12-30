@@ -44,7 +44,7 @@ impl<T> ApiResponse<T> {
     }
 
     /// 便捷构造函数 - 错误响应
-    pub fn error(code: i32, message: String, format: ResponseFormat) -> Self {
+    pub fn _error(code: i32, message: String, format: ResponseFormat) -> Self {
         let response = match format {
             ResponseFormat::Json => SubsonicResponse::failed(code, message),
             ResponseFormat::Xml => SubsonicResponse::failed_xml(code, message),
