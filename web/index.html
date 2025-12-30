@@ -268,6 +268,12 @@
                 return `u=${encodeURIComponent(u)}&p=${encodeURIComponent(p)}&v=1.16.1&c=WebPanel&f=${f}`;
             },
 
+            getParams(data) {
+                return Object.entries(data)
+                   .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+                   .join('&');
+            },
+
             buildApiUrl(endpoint) {
                 const authParams = this.getAuthParams();
                 const separator = endpoint.includes('?') ? '&' : '?';
@@ -350,30 +356,18 @@
             },
 
             async createUser(userData) {
-                const url = AuthManager.buildApiUrl('/rest/createUser');
-                await apiCall(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({...userData, f: "json"})
-                });
+                const url = AuthManager.buildApiUrl('/rest/createUser?' + AuthManager.getParams(userData));
+                await apiCall(url);
             },
 
             async deleteUser(username) {
-                const url = AuthManager.buildApiUrl('/rest/deleteUser');
-                await apiCall(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, f: "json" })
-                });
+                const url = AuthManager.buildApiUrl('/rest/deleteUser?' + AuthManager.getParams({ username }));
+                await apiCall(url);
             },
 
             async changePassword(username, password) {
-                const url = AuthManager.buildApiUrl('/rest/changePassword');
-                await apiCall(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password, f: "json" })
-                });
+                const url = AuthManager.buildApiUrl('/rest/changePassword?' + AuthManager.getParams({ username, password }));
+                await apiCall(url);
             },
 
             async loadAndRender() {
