@@ -75,7 +75,7 @@ http://你的服务器.com/rest/
 
 ## 通用参数
 
-以下参数可用于大多数端点：
+以下参数可用于大多数接口：
 
 | 参数 | 必需 | 类型 | 描述 |
 |------|------|------|------|
@@ -163,937 +163,103 @@ http://你的服务器.com/rest/
 
 ---
 
-## 浏览类端点
-
-### getIndexes
-返回所有音乐文件的索引列表。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `musicFolderId` | 否 | 整数 | 按音乐文件夹 ID 过滤 |
-| `ifModifiedSince` | 否 | Long | 仅在修改时间戳后返回索引 |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <indexes lastModified="1234567890">
-        <index name="A">
-            <artist id="123" name="艺术家名称"/>
-        </index>
-    </indexes>
-</subsonic-response>
-```
-
-```json
-{
-  "subsonic-response": {
-    "status": "ok",
-    "version": "1.16.1",
-    "indexes": {
-      "lastModified": 1234567890,
-      "index": [
-        {
-          "name": "A",
-          "artist": [
-            {
-              "id": "123",
-              "name": "艺术家名称"
-            }
-          ]
-        }
-      ]
-    }
-  }
-}
-```
-
-
-### getMusicDirectory
-返回音乐目录中的文件列表。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 目录 ID |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <directory id="123" name="目录名称">
-        <child id="124" title="歌曲" artist="艺术家" album="专辑" isDir="false"/>
-    </directory>
-</subsonic-response>
-```
-
-### getGenres
-
-返回流派列表。
-
-**参数：**
-无
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <genres>
-        <genre songCount="28" albumCount="6">Electronic</genre>
-    </genres>
-</subsonic-response>
-```
-
-### getArtists
-
-与 getIndexes 类似，但按 ID3 标签组织音乐。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `musicFolderId` | 否 | 字符串 | 如果指定了 musicFolderId，则仅返回指定音乐文件夹中的艺术家。请参阅 getMusicFolders。 |
-
-**响应：**  
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <artists ignoredArticles="The El La Los Las Le Les">
-        <index name="A">
-            <artist id="6633" name="Aaron Neville" coverArt="ar-6633" albumCount="1"/>
-        </index>
-        <index name="B">
-            <artist id="5950" name="Bob Marley" coverArt="ar-5950" albumCount="8"/>
-            <artist id="5957" name="Bruce Dickinson" coverArt="ar-5957" albumCount="2"/>
-        </index>
-    </artists>
-</subsonic-response>
-```
-
-### getArtist
-返回艺术家详情。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 艺术家 ID |
-
-**响应：**  
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <artist id="123" name="艺术家名称" albumCount="5">
-        <album id="124" name="专辑名称" artist="艺术家名称" coverArt="124"/>
-    </artist>
-</subsonic-response>
-```
-
-### getAlbum
-返回专辑详情。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 专辑 ID |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <album id="123" name="专辑名称" artist="艺术家名称" coverArt="123" songCount="10">
-        <song id="124" title="歌曲标题" artist="艺术家名称" album="专辑名称" duration="240"/>
-    </album>
-</subsonic-response>
-```
-
-### getSong
-返回歌曲详情。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 歌曲 ID |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <song id="123" title="歌曲标题" artist="艺术家名称" album="专辑名称"
-        genre="摇滚" year="2020" duration="240" bitRate="320"
-        contentType="audio/mpeg" path="艺术家/专辑/歌曲.mp3"/>
-</subsonic-response>
-```
-
-### getVideos
-返回所有视频。
-
-**参数：**
-无
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <videos>
-        <video id="123" title="视频标题" contentType="video/mp4"/>
-    </videos>
-</subsonic-response>
-```
-
-### getVideoInfo
-返回视频详情。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 视频 ID |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <videoInfo id="123" title="视频标题">
-        <captions id="124" label="英语"/>
-    </videoInfo>
-</subsonic-response>
-```
-
-### getArtistInfo
-返回艺术家信息和相似艺术家。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 艺术家 ID |
-| `count` | 否 | 整数 | 返回的相似艺术家数量 |
-| `includeNotPresent` | 否 | 布尔值 | 包含不在库中的艺术家 |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <artistInfo>
-        <biography>艺术家传记文本...</biography>
-        <musicBrainzId>mbid</musicBrainzId>
-        <lastFmUrl>http://last.fm/...</lastFmUrl>
-        <similarArtists>
-            <artist id="124" name="相似艺术家"/>
-        </similarArtists>
-    </artistInfo>
-</subsonic-response>
-```
-
-### getArtistInfo2
-返回扩展的艺术家信息。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 艺术家 ID |
-| `count` | 否 | 整数 | 相似艺术家数量 |
-| `includeNotPresent` | 否 | 布尔值 | 包含不在库中的艺术家 |
-
-**响应：**
-与 getArtistInfo 类似，但包含更详细的信息。
-
-### getAlbumList
-返回专辑列表。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `type` | 是 | 字符串 | 专辑列表类型：`random`（随机）、`newest`（最新）、`highest`（评分最高）、`frequent`（最常播放）、`recent`（最近播放）、`starred`（已收藏）、`byGenre`（按流派）、`byYear`（按年份） |
-| `size` | 否 | 整数 | 返回的专辑数量 |
-| `offset` | 否 | 整数 | 跳过的专辑数量 |
-| `fromYear` | 否 | 整数 | 起始年份（用于 byYear） |
-| `toYear` | 否 | 整数 | 结束年份（用于 byYear） |
-| `genre` | 否 | 字符串 | 流派名称（用于 byGenre） |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <albumList>
-        <album id="123" name="专辑名称" artist="艺术家名称" coverArt="123"/>
-    </albumList>
-</subsonic-response>
-```
-
-### getTopSongs
-
-返回给定艺术家的热门歌曲，使用来自 last.fm 的数据。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `artist` | 是 | 字符串 | 艺术家名字 |
-| `count` | 否 | 整数 | 返回的最大歌曲数量 |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <topSongs>
-        <song id="123" title="歌曲标题" artist="艺术家名称" album="专辑名称"
-        genre="摇滚" year="2020" duration="240" bitRate="320"
-        contentType="audio/mpeg" path="艺术家/专辑/歌曲.mp3"/>
-    </topSongs>
-</subsonic-response>
-```
-
-### getAlbumList2
-返回包含更多详情的专辑列表。
-
-**参数：**
-与 getAlbumList 相同。
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <albumList2>
-        <album id="123" name="专辑名称" artist="艺术家名称" artistId="456"
-            coverArt="123" songCount="10" created="2020-01-01T00:00:00Z"
-            duration="3600" playCount="100" year="2020" genre="摇滚"/>
-    </albumList2>
-</subsonic-response>
-```
-
-### getRandomSongs
-返回随机歌曲。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `size` | 否 | 整数 | 返回的歌曲数量 |
-| `genre` | 否 | 字符串 | 按流派过滤 |
-| `fromYear` | 否 | 整数 | 起始年份 |
-| `toYear` | 否 | 整数 | 结束年份 |
-| `musicFolderId` | 否 | 整数 | 按音乐文件夹过滤 |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <randomSongs>
-        <song id="123" title="歌曲标题" artist="艺术家" album="专辑" duration="240"/>
-    </randomSongs>
-</subsonic-response>
-```
-
-### getSongsByGenre
-
-返回给定流派的歌曲。
-
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `genre` | 是 | 字符串 | 流派名称 |
-| `count` | 否 | 整数 | 最大歌曲数量 |
-| `offset` | 否 | 整数 | 结果偏移量 |
-| `musicFolderId` | 否 | 整数 | 按音乐文件夹过滤 |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <songsByGenre>
-        <song id="123" title="歌曲标题" artist="艺术家名称" album="专辑名称"
-        genre="摇滚" year="2020" duration="240" bitRate="320"
-        contentType="audio/mpeg" path="艺术家/专辑/歌曲.mp3"/>
-    </songsByGenre>
-</subsonic-response>
-```
-
-### getNowPlaying
-返回正在播放的歌曲。
-
-**参数：**
-无
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <nowPlaying>
-        <entry id="123" title="歌曲" artist="艺术家" username="用户" minutesAgo="5"/>
-    </nowPlaying>
-</subsonic-response>
-```
-
-### getStarred
-返回已收藏的项目。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `musicFolderId` | 否 | 整数 | 按音乐文件夹过滤 |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <starred>
-        <artist id="123" name="艺术家"/>
-        <album id="124" name="专辑" artist="艺术家"/>
-        <song id="125" title="歌曲" artist="艺术家" album="专辑"/>
-    </starred>
-</subsonic-response>
-```
-
-### getStarred2
-返回已收藏的项目（包含更多详情）。
-
-**参数：**
-与 getStarred 相同。
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <starred2>
-        <artist id="123" name="艺术家" coverArt="123" albumCount="5"/>
-        <album id="124" name="专辑" artist="艺术家" coverArt="124" songCount="10"/>
-        <song id="125" title="歌曲" artist="艺术家" album="专辑" duration="240"/>
-    </starred2>
-</subsonic-response>
-```
+## 具体 API 接口
+
+所有具体的请求接口都是 `/rest/xxx` 的方式。
+
+具体接口对应的请求参数和响应格式，都在 `./subsonic-api` 路径下，对应的具体分类文件夹中。
+
+例如 `/rest/getSongs ` 接口的具体请求参数和响应格式位于 `./subsonic-api/浏览类/getSongs.md`
+
+### 浏览类
+
+- getIndexes 返回所有音乐文件的索引列表
+- getMusicDirectory 返回音乐目录中的文件列表
+- getGenres 返回流派列表
+- getArtists 返回艺术家列表，与 getIndexes 类似，但按 ID3 标签组织音乐。
+- getArtist 返回艺术家详情
+- getAlbum 返回专辑详情
+- getSong 返回歌曲详情
+- getVideos 返回所有视频
+- getArtistInfo 返回艺术家信息和相似艺术家
+- getArtistInfo2 返回扩展的艺术家信息
+- getAlbumList 返回专辑列表
+- getTopSongs 返回给定艺术家的热门歌曲
+- getAlbumList2 返回包含更多详情的专辑列表
+- getRandomSongs 返回随机歌曲
+- getSongsByGenre 返回给定流派的歌曲
+- getNowPlaying 返回正在播放的歌曲
+- getStarred 返回已收藏的项目
+- getStarred2 返回已收藏的项目（包含更多详情）
+
+### 搜索类
+
+- search 返回匹配搜索条件的歌曲、艺术家和专辑
+- search2 返回匹配搜索条件的歌曲、艺术家和专辑
+- search3 返回匹配搜索条件的歌曲、艺术家和专辑
 
 ---
 
-## 搜索类端点
+### 流媒体
 
-### search
-返回匹配搜索条件的歌曲、艺术家和专辑。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `artist` | 否 | 字符串 | 艺术家过滤 |
-| `album` | 否 | 字符串 | 专辑过滤 |
-| `title` | 否 | 字符串 | 歌曲标题过滤 |
-| `any` | 否 | 字符串 | 搜索所有字段 |
-| `count` | 否 | 整数 | 最大结果数 |
-| `offset` | 否 | 整数 | 结果偏移量 |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <searchResult>
-        <artist id="123" name="艺术家"/>
-        <album id="124" name="专辑" artist="艺术家"/>
-        <song id="125" title="歌曲" artist="艺术家" album="专辑"/>
-    </searchResult>
-</subsonic-response>
-```
-
-### search2
-返回匹配搜索条件的歌曲、艺术家和专辑。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `query` | 是 | 字符串 | 搜索查询 |
-| `artistCount` | 否 | 整数 | 最大艺术家数量 |
-| `artistOffset` | 否 | 整数 | 艺术家偏移量 |
-| `albumCount` | 否 | 整数 | 最大专辑数量 |
-| `albumOffset` | 否 | 整数 | 专辑偏移量 |
-| `songCount` | 否 | 整数 | 最大歌曲数量 |
-| `songOffset` | 否 | 整数 | 歌曲偏移量 |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <searchResult2>
-        <artist id="123" name="艺术家"/>
-        <album id="124" name="专辑" artist="艺术家"/>
-        <song id="125" title="歌曲" artist="艺术家" album="专辑"/>
-    </searchResult2>
-</subsonic-response>
-```
-
-### search3
-返回匹配搜索条件的歌曲、艺术家和专辑（包含更多详情）。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `query` | 是 | 字符串 | 搜索查询 |
-| `artistCount` | 否 | 整数 | 最大艺术家数量 |
-| `artistOffset` | 否 | 整数 | 艺术家偏移量 |
-| `albumCount` | 否 | 整数 | 最大专辑数量 |
-| `albumOffset` | 否 | 整数 | 专辑偏移量 |
-| `songCount` | 否 | 整数 | 最大歌曲数量 |
-| `songOffset` | 否 | 整数 | 歌曲偏移量 |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <searchResult3>
-        <artist id="123" name="艺术家" coverArt="123" albumCount="5"/>
-        <album id="124" name="专辑" artist="艺术家" coverArt="124" songCount="10"/>
-        <song id="125" title="歌曲" artist="艺术家" album="专辑" duration="240"/>
-    </searchResult3>
-</subsonic-response>
-```
+- stream 返回流媒体文件
+- download 返回下载文件
+- hls 流式传输文件
 
 ---
 
-## 流媒体端点
+### 播放列表
 
-### stream
-流式传输歌曲。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 歌曲 ID |
-| `maxBitRate` | 否 | 整数 | 最大比特率 |
-| `format` | 否 | 字符串 | 输出格式：`mp3`、`flac`、`wav`、`aac`、`m4a`、`opus`、`oga` |
-| `timeOffset` | 否 | 整数 | 时间偏移（秒） |
-| `size` | 否 | 字符串 | 视频尺寸（用于视频流） |
-| `estimateContentLength` | 否 | 布尔值 | 估算内容长度 |
-| `converted` | 否 | 布尔值 | 实时转换 |
-
-**响应：**
-二进制音频/视频数据
-
-### download
-下载歌曲或视频。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 项目 ID |
-
-**响应：**
-二进制文件数据
-
-### hls
-使用 HLS 流式传输视频。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 视频 ID |
-| `bitRate` | 否 | 整数 | 比特率 |
-| `audioTrack` | 否 | 字符串 | 音轨 ID |
-
-**响应：**
-HLS 播放列表数据
+- getPlaylists 返回所有播放列表
+- getPlaylist 返回播放列表详情
+- createPlaylist 创建新播放列表
+- updatePlaylist 更新播放列表
+- deletePlaylist 删除播放列表
 
 ---
 
-## 播放列表端点
+### 媒体检索
 
-### getPlaylists
-返回所有播放列表。
+- getCoverArt 返回封面图片
+- getLyrics 返回歌曲歌词
+- getAvatar 返回用户头像
+---
 
-**参数：**
-无
+### 库管理
 
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <playlists>
-        <playlist id="123" name="我的播放列表" owner="用户名" public="false" songCount="10"/>
-    </playlists>
-</subsonic-response>
-```
-
-### getPlaylist
-返回播放列表详情。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 播放列表 ID |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <playlist id="123" name="我的播放列表" owner="用户名" public="false" songCount="10" duration="3600">
-        <entry id="124" title="歌曲" artist="艺术家" album="专辑" duration="240"/>
-    </playlist>
-</subsonic-response>
-```
-
-### createPlaylist
-创建新播放列表。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `name` | 是 | 字符串 | 播放列表名称 |
-| `songId` | 否 | 数组 | 要添加的歌曲 ID 数组 |
-
-**响应：**
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-	<playlist id="123" name="我的播放列表" owner="用户名" public="false" songCount="0"/>
-</subsonic-response>
-```
-
-### updatePlaylist
-更新播放列表。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `playlistId` | 是 | 字符串 | 播放列表 ID |
-| `name` | 否 | 字符串 | 新名称 |
-| `comment` | 否 | 字符串 | 注释 |
-| `public` | 否 | 布尔值 | 公开可见性 |
-| `songIdToAdd` | 否 | 数组 | 要添加的歌曲 |
-| `songIndexToRemove` | 否 | 数组 | 要删除的歌曲索引 |
-
-**响应：**
-成功/失败状态
-
-### deletePlaylist
-删除播放列表。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 播放列表 ID |
-
-**响应：**
-成功/失败状态
+- scrobble 记录播放（报告播放历史）
+- star 收藏项目
+- unstar 取消收藏项目
+- setRating 为项目设置评分
+- getRating 获取项目评分
 
 ---
 
-## 媒体检索端点
+### 聊天端点
 
-### getCoverArt
-返回封面图片。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 封面 ID |
-| `size` | 否 | 整数 | 期望的尺寸（像素） |
-
-**响应：**
-二进制图像数据
-
-### getLyrics
-返回歌曲歌词。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `artist` | 否 | 字符串 | 艺术家名称 |
-| `title` | 否 | 字符串 | 歌曲标题 |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-	<lyrics artist="艺术家" title="歌曲">歌词文本...</lyrics>
-</subsonic-response>
-```
-
-### getAvatar
-返回用户头像。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `username` | 是 | 字符串 | 用户名 |
-
-**响应：**
-二进制图像数据
+- getChatMessages 返回聊天消息
+- addChatMessage 添加聊天消息
 
 ---
 
-## 库管理端点
+### 用户管理
 
-### scrobble
-记录播放（报告播放历史）。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 歌曲 ID |
-| `submission` | 否 | 布尔值 | true 为提交播放，false 为正在播放 |
-| `time` | 否 | Long | Unix 时间戳（毫秒） |
-
-**响应：**
-成功/失败状态
-
-### star
-收藏项目。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 否 | 字符串 | 项目 ID |
-| `albumId` | 否 | 字符串 | 专辑 ID |
-| `artistId` | 否 | 字符串 | 艺术家 ID |
-
-**响应：**
-成功/失败状态
-
-### unstar
-取消收藏项目。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 否 | 字符串 | 项目 ID |
-| `albumId` | 否 | 字符串 | 专辑 ID |
-| `artistId` | 否 | 字符串 | 艺术家 ID |
-
-**响应：**
-成功/失败状态
-
-### setRating
-为项目设置评分。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 项目 ID |
-| `rating` | 是 | 整数 | 评分（1-5） |
-
-**响应：**
-成功/失败状态
-
-### getRating
-获取项目评分。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `id` | 是 | 字符串 | 项目 ID |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-	<rating id="123" rating="5"/>
-</subsonic-response>
-```
+- getUser 返回用户详情
+- getUsers 返回所有用户
+- createUser 创建新用户
+- updateUser 更新用户
+- deleteUser 删除用户
+- changePassword 修改用户密码
 
 ---
 
-## 聊天端点
+### 系统
 
-### getChatMessages
-返回聊天消息。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `since` | 否 | Long | Unix 时间戳（毫秒） |
-
-**响应：**
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <chatMessages>
-        <message id="123" username="用户" message="你好" time="1234567890"/>
-    </chatMessages>
-</subsonic-response>
-```
-
-### addChatMessage
-添加聊天消息。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `message` | 是 | 字符串 | 消息文本 |
-
-**响应：**
-成功/失败状态
-
----
-
-## 用户管理端点
-
-### getUser
-返回用户详情。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `username` | 是 | 字符串 | 用户名 |
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <user username="用户" email="user@example.com" admin="false"
-          scrobblingEnabled="true" maxBitRate="320"
-          downloadRole="true" uploadRole="false"
-          playlistRole="true" coverArtRole="true"
-          commentRole="false" podcastRole="false"
-          shareRole="true" videoConversionRole="false"/>
-</subsonic-response>
-```
-
-### getUsers
-返回所有用户。
-
-**参数：**
-无
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <users>
-        <user username="用户" email="user@example.com" admin="false"/>
-    </users>
-</subsonic-response>
-```
-
-### createUser
-创建新用户。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `username` | 是 | 字符串 | 用户名 |
-| `password` | 是 | 字符串 | 密码 |
-| `email` | 是 | 字符串 | 邮箱地址 |
-| `ldapAuth` | 否 | 布尔值 | 使用 LDAP 认证 |
-| `admin` | 否 | 布尔值 | 管理员权限 |
-| `scrobblingEnabled` | 否 | 布尔值 | 启用播放记录 |
-| `maxBitRate` | 否 | 整数 | 最大比特率 |
-| `downloadRole` | 否 | 布尔值 | 下载权限 |
-| `uploadRole` | 否 | 布尔值 | 上传权限 |
-| `playlistRole` | 否 | 布尔值 | 播放列表管理 |
-| `coverArtRole` | 否 | 布尔值 | 封面管理 |
-| `commentRole` | 否 | 布尔值 | 评论权限 |
-| `podcastRole` | 否 | 布尔值 | 播客管理 |
-| `shareRole` | 否 | 布尔值 | 分享权限 |
-| `videoConversionRole` | 否 | 布尔值 | 视频转换 |
-
-**响应：**
-成功/失败状态
-
-### updateUser
-更新用户。
-
-**参数：**
-与 createUser 相同，但 `username` 为必需。
-
-**响应：**
-成功/失败状态
-
-### deleteUser
-删除用户。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `username` | 是 | 字符串 | 用户名 |
-
-**响应：**
-成功/失败状态
-
-### changePassword
-修改用户密码。
-
-**参数：**
-| 参数 | 必需 | 类型 | 描述 |
-|------|------|------|------|
-| `username` | 是 | 字符串 | 用户名 |
-| `password` | 是 | 字符串 | 新密码 |
-
-**响应：**
-成功/失败状态
-
----
-
-## 系统端点
-
-### ping
-测试连接性。
-
-**参数：**
-无
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-	<subsonic-response status="ok" version="1.16.1"/>
-</subsonic-response>
-```
-
-### getLicense
-返回许可证信息。
-
-**参数：**
-无
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-	<license valid="true" email="user@example.com" key="许可证密钥"/>
-</subsonic-response>
-```
-
-### getSystemInfo
-返回系统信息。
-
-**参数：**
-无
-
-**响应：**
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-    <systemInfo>
-        <version>1.16.1</version>
-        <server>Subsonic</server>
-        <type>Subsonic</type>
-    </systemInfo>
-</subsonic-response>
-```
-
-### getScanStatus
-返回扫描状态。
-
-**参数：**
-无
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-	<scanStatus scanning="false" count="1000"/>
-</subsonic-response>
-```
-
-### startScan
-启动库扫描。
-
-**参数：**
-无
-
-**响应：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
-	<scanStatus scanning="true" count="0"/>
-</subsonic-response>
-```
+- ping 测试连接性
+- getLicense 返回许可证信息
+- getSystemInfo 返回系统信息
+- getScanStatus 返回扫描状态
+- startScan 启动库扫描
 
 ---
 
