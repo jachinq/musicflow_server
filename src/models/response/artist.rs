@@ -22,6 +22,7 @@ pub struct ArtistIndex {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ArtistResponse {
     pub id: String,
     pub name: String,
@@ -48,9 +49,9 @@ impl From<Artist> for ArtistResponse {
 impl From<ArtistDto> for ArtistResponse {
     fn from(dto: ArtistDto) -> Self {
         Self {
-            id: dto.id,
+            id: dto.id.to_string(),
             name: dto.name,
-            cover_art: None,
+            cover_art: Some(format!("ar-{}", dto.id)),
             album_count: None,
         }
     }
