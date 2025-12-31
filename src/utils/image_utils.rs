@@ -353,7 +353,7 @@ pub fn extract_audio_metadata_static(path: &Path) -> Result<AudioMetadata, AppEr
 }
 
 /// 根据文件扩展名获取 MIME 类型
-fn get_content_type(path: &Path) -> String {
+pub fn get_content_type(path: &Path) -> String {
     let ext = path
         .extension()
         .and_then(|s| s.to_str())

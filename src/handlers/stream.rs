@@ -79,9 +79,7 @@ pub async fn stream(
     }
 
     // 打开文件
-    let file = File::open(&file_path)
-        .await
-        .map_err(AppError::IoError)?;
+    let file = File::open(&file_path).await.map_err(AppError::IoError)?;
 
     // 创建流
     let stream = ReaderStream::new(file);
@@ -138,9 +136,7 @@ pub async fn download(
     }
 
     // 打开文件
-    let file = File::open(&file_path)
-        .await
-        .map_err(AppError::IoError)?;
+    let file = File::open(&file_path).await.map_err(AppError::IoError)?;
 
     // 创建流
     let stream = ReaderStream::new(file);
@@ -188,8 +184,14 @@ pub async fn get_cover_art(
             // 3. 原图不存在，尝试从网络获取
             // 3.1 从数据库查询专辑名称作为搜索关键词
             let album_name = if cover_art_id.starts_with("al-") {
-                sqlx::query_as::<_, (String,)>("SELECT name FROM albums WHERE cover_art_path = ?")
-                    .bind(cover_art_id)
+                sqlx::query_as::<_, (String,)>("SELECT name FROM albums WHERE id = ?")
+                    .bind(cover_art_id.replace("al-", ""))
+                    .fetch_optional(&*state.pool)
+                    .await?
+                    .map(|(name,)| name)
+            } else if cover_art_id.starts_with("ar-") {
+                sqlx::query_as::<_, (String,)>("SELECT name FROM artists WHERE id = ?")
+                    .bind(cover_art_id.replace("ar-", ""))
                     .fetch_optional(&*state.pool)
                     .await?
                     .map(|(name,)| name)
@@ -201,10 +203,19 @@ pub async fn get_cover_art(
                 tracing::info!("Fetching cover from network for album: {}", keyword);
 
                 // 3.2 从酷狗获取封面图片
-                let response = MetaClient::new()
-                    .get_kugou_album_cover_stream(&keyword)
-                    .await
-                    .map_err(|e| AppError::NotFound(format!("Failed to fetch cover: {}", e)))?;
+                let response = if cover_art_id.starts_with("al-") {
+                    MetaClient::new()
+                        .get_kugou_album_cover_stream(&keyword)
+                        .await
+                        .map_err(|e| AppError::NotFound(format!("Failed to fetch cover: {}", e)))?
+                } else if cover_art_id.starts_with("ar-") {
+                    MetaClient::new()
+                        .get_kugou_artist_cover_stream(&keyword)
+                        .await
+                        .map_err(|e| AppError::NotFound(format!("Failed to fetch cover: {}", e)))?
+                } else {
+                    return Err(AppError::not_found("Invalid cover art id"));
+                };
 
                 // 3.3 读取响应字节流
                 let bytes = response.bytes().await.map_err(|e| {

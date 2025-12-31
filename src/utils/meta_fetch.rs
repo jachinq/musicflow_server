@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::response;
 
-const DEFAULT_SIZE : &str = "600";
+const DEFAULT_SIZE: &str = "600";
 const KUGOU_META_URL: &str = "http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword={}&page=1&pagesize=20&showtype=1";
 const KUGOU_ALBUM_URL: &str = "http://mobilecdn.kugou.com/api/v3/search/album?keyword={}";
 const KUGOU_ARTISTS_URL: &str =
@@ -87,7 +87,8 @@ impl MetaClient {
 
     /// 从 kugou 获取歌手 id
     pub async fn get_kugou_artist_id(&self, keyword: &str) -> Result<i32> {
-        let url = KUGOU_ARTISTS_URL.replace("{}", keyword);
+        let artist = parse_multi_artist(keyword);
+        let url = KUGOU_ARTISTS_URL.replace("{}", &artist);
         println!("url: {}", url);
 
         let res = self.client.get(url).send().await?;
@@ -132,10 +133,22 @@ impl MetaClient {
         let url = KUGOU_ARTIST_URL.replace("{}", &singerid.to_string());
         println!("url: {}", url);
 
-        let res = self.client.get(url).send().await?;
-        let json = res.json::<KugouResponseData<KugouArtist>>().await?;
+        // 这个接口返回的不是标准的 json，需要处理一下
+        let text = self.client.get(url).send().await?.text().await?;
 
-        // println!("{:?}", json);
+        let text = text
+            .replace("<!--KG_TAG_RES_END-->", "")
+            .replace("<!--KG_TAG_RES_START-->", "");
+        // println!("res text = {}", text);
+
+        let json = serde_json::from_str::<KugouResponseData<KugouArtist>>(&text);
+        if let Err(e) = json {
+            println!("parse json error: {}, text = {}", e, text);
+            return Err(anyhow::anyhow!("parse json error: {}", e));
+        }
+        let json = json.unwrap();
+
+        // println!("art json = {:?}", json);
         if json.status != 1 {
             return Err(anyhow::anyhow!("status={} not 1", json.status));
         }
@@ -154,7 +167,7 @@ impl MetaClient {
     /// 从 kugou 获取歌手封面流
     pub async fn get_kugou_artist_cover_stream(&self, keyword: &str) -> Result<reqwest::Response> {
         let url = self.get_kugou_artist_cover(keyword).await?;
-
+        println!("cover url: {}", url);
         let response = self
             .client
             .get(&url)
@@ -164,6 +177,23 @@ impl MetaClient {
 
         Ok(response)
     }
+}
+
+fn parse_multi_artist(artists: &str) -> String {
+    if artists.contains("&") {
+        let artists = artists.split("&").map(|s| s.trim()).collect::<Vec<_>>();
+        if !artists.is_empty() {
+            return artists[0].trim().to_string();
+        }
+    }
+
+    if artists.contains("/") {
+        let artists = artists.split("/").map(|s| s.trim()).collect::<Vec<_>>();
+        if !artists.is_empty() {
+            return artists[0].trim().to_string();
+        }
+    }
+    return artists.to_string();
 }
 
 /// 返回的 data 是单个对象

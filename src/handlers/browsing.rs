@@ -80,10 +80,12 @@ pub async fn get_indexes(
     }
 
     // 转换为Index结构
-    let indexes: Vec<Index> = index_map
+    let mut indexes: Vec<Index> = index_map
         .into_iter()
         .map(|(name, artist)| Index { name, artist })
         .collect();
+    // 按 name 排序
+    indexes.sort_by(|a, b| a.name.cmp(&b.name));
 
     let result = Indexes {
         last_modified: chrono::Utc::now().timestamp(),
@@ -277,12 +279,14 @@ pub async fn get_album(
 
 /// GET /rest/getSong
 pub async fn get_song(
+    claims: crate::middleware::auth_middleware::Claims,
     Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetSongParams>,
 ) -> Result<ApiResponse<SongResponse>, AppError> {
+    let user_id = claims.sub;
     // 查询歌曲信息
-    let song = state.browseing_service.get_song(&params.id).await?;
+    let song = state.browseing_service.get_song(&user_id, &params.id).await?;
 
     let result = SongResponse { song: song.into() };
 

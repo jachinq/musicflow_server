@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
-use crate::models::dto::{SongDto, SongDetailDto};
+use crate::{models::dto::{SongDetailDto, SongDto, ComplexSongDto}};
 use super::ToXml;
 
 /// 歌曲响应 (Subsonic 格式)
@@ -33,6 +33,17 @@ pub struct Song {
     pub album_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artist_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub play_count: Option<i32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_rating: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_starred: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suffix: Option<String>,
 }
 
 // DTO -> Response 转换
@@ -54,6 +65,11 @@ impl From<SongDto> for Song {
             cover_art: None,
             album_id: None,
             artist_id: None,
+            size: None,
+            play_count: None,
+            user_rating: None,
+            is_starred: None,
+            suffix: None,
         }
     }
 }
@@ -76,6 +92,38 @@ impl From<SongDetailDto> for Song {
             cover_art: dto.cover_art,
             album_id: Some(dto.album_id),
             artist_id: Some(dto.artist_id),
+            size: None,
+            play_count: None,
+            user_rating: None,
+            is_starred: None,
+            suffix: None,
+        }
+    }
+}
+
+impl From<ComplexSongDto> for Song {
+        fn from(dto: ComplexSongDto) -> Self {
+        Self {
+            id: dto.song.id,
+            title: dto.song.title,
+            artist: dto.song.artist,
+            album: dto.song.album,
+            genre: dto.song.genre,
+            year: dto.song.year,
+            duration: dto.song.duration,
+            bit_rate: dto.song.bit_rate,
+            content_type: dto.song.content_type.unwrap_or_else(|| "audio/mpeg".to_string()),
+            path: dto.song.path,
+            track_number: dto.song.track_number,
+            disc_number: dto.song.disc_number,
+            cover_art: dto.song.cover_art,
+            album_id: Some(dto.song.album_id),
+            artist_id: Some(dto.song.artist_id),
+            size: dto.song.file_size,
+            play_count: dto.song.play_count,
+            user_rating: dto.user_rating,
+            is_starred: dto.is_starred,
+            suffix: dto.suffix,
         }
     }
 }
@@ -171,6 +219,21 @@ impl ToXml for Song {
         }
         if let Some(artist_id) = &self.artist_id {
             xml.push_str(&format!(r#" artistId="{}""#, artist_id));
+        }
+        if let Some(value) = &self.size {
+            xml.push_str(&format!(r#" size="{}""#, value));
+        }
+        if let Some(value) = &self.suffix {
+            xml.push_str(&format!(r#" suffix="{}""#, value));
+        }
+        if let Some(value) = &self.user_rating {
+            xml.push_str(&format!(r#" userRating="{}""#, value));
+        }
+        if let Some(value) = &self.is_starred {
+            xml.push_str(&format!(r#" isStarred="{}""#, value));
+        }
+        if let Some(value) = &self.suffix {
+            xml.push_str(&format!(r#" suffix="{}""#, value));
         }
         xml.push_str("/>");
         xml

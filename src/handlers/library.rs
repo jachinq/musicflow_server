@@ -4,15 +4,12 @@
 use crate::error::AppError;
 use crate::extractors::Format;
 use crate::models::response::{
-    AlbumResponse, ArtistResponse, RatingResponse, Song, StarredResponse, ToXml,
+    AlbumResponse, ArtistResponse, RatingResponse, RatingResponseWrapper, Song, StarredResponse,
+    ToXml,
 };
 use crate::response::ApiResponse;
 use crate::services::{LibraryService, ScanService, StarItemType};
-use axum::{
-    extract::Query,
-    routing::get,
-    Router,
-};
+use axum::{extract::Query, routing::get, Router};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -170,11 +167,7 @@ pub async fn scrobble(
         .time
         .unwrap_or_else(|| chrono::Utc::now().timestamp());
     let submission = params.submission.unwrap_or("True".to_string());
-    let submission = if submission == "True" {
-        true
-    } else {
-        false
-    };
+    let submission = if submission == "True" { true } else { false };
 
     // 调用 Service 层 (带事务保护)
     state
@@ -277,8 +270,10 @@ pub async fn get_rating(
     axum::extract::State(state): axum::extract::State<LibraryState>,
     Query(params): Query<GetRatingParams>,
     Format(format): Format,
-) -> Result<ApiResponse<RatingResponse>, AppError> {
+) -> Result<ApiResponse<RatingResponseWrapper>, AppError> {
     let user_id = &claims.sub;
+
+    tracing::info!("get_rating: user_id = {}, params = {:?}", user_id, params);
 
     // 调用 Service 层
     let rating = state
@@ -286,9 +281,11 @@ pub async fn get_rating(
         .get_rating(user_id, &params.id)
         .await?;
 
-    let result = RatingResponse {
-        id: params.id.clone(),
-        rating: rating.unwrap_or(0),
+    let result = RatingResponseWrapper {
+        rating: RatingResponse {
+            id: params.id.clone(),
+            rating: rating.unwrap_or(0),
+        },
     };
 
     Ok(ApiResponse::ok(Some(result), format))

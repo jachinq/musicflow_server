@@ -8,9 +8,10 @@
 #![allow(dead_code)]
 
 use crate::error::AppError;
-use crate::models::dto::{AlbumDetailDto, ArtistDetailDto, ArtistDto, SongDetailDto};
+use crate::models::dto::{AlbumDetailDto, ArtistDetailDto, ArtistDto, SongDetailDto, ComplexSongDto};
 use crate::services::ServiceContext;
-use crate::utils::sql_utils;
+use crate::utils::{image_utils, sql_utils};
+use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -335,7 +336,7 @@ impl BrowsingService {
     /// # 参数
     ///
     /// * `song_id` - 歌曲 ID
-    pub async fn get_song(&self, song_id: &str) -> Result<SongDetailDto, AppError> {
+    pub async fn get_song(&self, user_id: &str, song_id: &str) -> Result<ComplexSongDto, AppError> {
         let song = sqlx::query_as::<_, SongDetailDto>(&format!(
             "{} WHERE s.id = ?",
             sql_utils::detail_sql()
@@ -345,7 +346,29 @@ impl BrowsingService {
         .await?
         .ok_or_else(|| AppError::not_found("Song"))?;
 
-        Ok(song)
+
+        let suffix = if song.path.is_some() {
+             Some(image_utils::get_content_type(&Path::new(&song.path.clone().unwrap())))
+        } else {
+            None
+        };
+        
+        let rating = sqlx::query_scalar::<_, i32>(
+            "SELECT rating FROM ratings WHERE user_id = ? AND song_id = ?",
+        )
+        .bind(user_id)
+        .bind(&song.id)
+        .fetch_optional(&self.ctx.pool)
+        .await?;
+
+        let complex_song = ComplexSongDto {
+            song,
+            user_rating: rating,
+            is_starred: None,
+            suffix
+        };
+
+        Ok(complex_song)
     }
 }
 
@@ -544,10 +567,10 @@ mod tests {
         let pool = setup_test_db().await;
         let service = create_service(pool);
 
-        let song = service.get_song("song1").await.unwrap();
+        let song = service.get_song("1", "song1").await.unwrap();
 
-        assert_eq!(song.title, "Song 1");
-        assert_eq!(song.artist, "Test Artist");
+        assert_eq!(song.song.title, "Song 1");
+        assert_eq!(song.song.artist, "Test Artist");
     }
 
     #[tokio::test]

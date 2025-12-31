@@ -12,7 +12,7 @@
 <subsonic-response xmlns="http://subsonic.org/restapi" status="ok" version="1.16.1">
     <song id="123" title="歌曲标题" artist="艺术家名称" album="专辑名称"
         genre="摇滚" year="2020" duration="240" bitRate="320"
-        contentType="audio/mpeg" path="艺术家/专辑/歌曲.mp3"/>
+        contentType="audio/mpeg" path="艺术家/专辑/歌曲.mp3" userRating="5"/>
 </subsonic-response>
 ```
 
@@ -31,7 +31,8 @@
         "duration": 240,
         "bitRate": 320,
         "contentType": "audio/mpeg",
-        "path": "艺术家/专辑/歌曲.mp3"
+        "path": "艺术家/专辑/歌曲.mp3",
+        "userRating": 5
     }
   }
 }

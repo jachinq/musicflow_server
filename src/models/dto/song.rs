@@ -16,7 +16,7 @@ pub struct SongDto {
     pub cover_art: Option<String>,
 }
 
-/// 歌曲详细信息 DTO (包含所有字段)
+/// 歌曲详细信息 DTO (包含所有数据库字段)
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct SongDetailDto {
@@ -35,4 +35,16 @@ pub struct SongDetailDto {
     pub content_type: Option<String>,
     pub path: Option<String>,
     pub cover_art: Option<String>,
+    pub file_size: Option<u32>,
+    pub play_count: Option<i32>,
+}
+
+/// 歌曲详细信息 DTO (包含所有需要返回的字段)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct ComplexSongDto {
+    pub song: SongDetailDto,
+    pub user_rating: Option<i32>,
+    pub is_starred: Option<bool>,
+    pub suffix: Option<String>,
 }

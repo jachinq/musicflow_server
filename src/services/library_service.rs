@@ -201,16 +201,34 @@ impl LibraryService {
             return Err(AppError::validation_error("Rating must be between 1 and 5"));
         }
 
-        sqlx::query(
-            "INSERT OR REPLACE INTO ratings (id, user_id, song_id, rating, created_at, updated_at)
-             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-        )
-        .bind(id_builder::generate_id())
-        .bind(user_id)
-        .bind(item_id)
-        .bind(rating)
-        .execute(&self.ctx.pool)
-        .await?;
+        tracing::info!("sql={}", format!("INSERT OR REPLACE INTO ratings (id, user_id, song_id, rating, created_at, updated_at) VALUES ({:?}, {:?}, {:?}, {}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", id_builder::generate_id(), user_id, item_id, rating));
+
+        let user_id = user_id.to_string();
+        let item_id = item_id.to_string();
+        self.ctx
+            .transaction(|tx| {
+                async move {
+                    sqlx::query("DELETE FROM ratings WHERE user_id = ? AND song_id = ?")
+                        .bind(&user_id)
+                        .bind(&item_id)
+                        .execute(&mut **tx)
+                        .await?;
+
+                    sqlx::query(
+                        "INSERT INTO ratings (id, user_id, song_id, rating, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+                    .bind(id_builder::generate_id())
+                    .bind(&user_id)
+                    .bind(&item_id)
+                    .bind(rating)
+                    .execute(&mut **tx)
+                    .await?;
+
+                    Ok::<(), AppError>(())
+                }
+                .boxed()
+            })
+            .await?;
 
         Ok(())
     }
