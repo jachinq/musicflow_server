@@ -216,7 +216,8 @@ impl LibraryService {
 
                     sqlx::query(
                         "INSERT INTO ratings (id, user_id, song_id, rating, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                    )
                     .bind(id_builder::generate_id())
                     .bind(&user_id)
                     .bind(&item_id)

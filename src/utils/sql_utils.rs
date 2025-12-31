@@ -9,5 +9,6 @@ pub fn detail_sql() -> String {
             al.cover_art_path as cover_art, s.file_size, s.play_count
          FROM songs s
          JOIN albums al ON s.album_id = al.id
-         JOIN artists ar ON s.artist_id = ar.id".to_string()
+         JOIN artists ar ON s.artist_id = ar.id"
+        .to_string()
 }

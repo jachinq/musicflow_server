@@ -8,7 +8,9 @@
 #![allow(dead_code)]
 
 use crate::error::AppError;
-use crate::models::dto::{AlbumDetailDto, ArtistDetailDto, ArtistDto, SongDetailDto, ComplexSongDto};
+use crate::models::dto::{
+    AlbumDetailDto, ArtistDetailDto, ArtistDto, ComplexSongDto, SongDetailDto,
+};
 use crate::services::ServiceContext;
 use crate::utils::{image_utils, sql_utils};
 use std::path::Path;
@@ -346,13 +348,14 @@ impl BrowsingService {
         .await?
         .ok_or_else(|| AppError::not_found("Song"))?;
 
-
         let suffix = if song.path.is_some() {
-             Some(image_utils::get_content_type(Path::new(&song.path.clone().unwrap())))
+            Some(image_utils::get_content_type(Path::new(
+                &song.path.clone().unwrap(),
+            )))
         } else {
             None
         };
-        
+
         let rating = sqlx::query_scalar::<_, i32>(
             "SELECT rating FROM ratings WHERE user_id = ? AND song_id = ?",
         )
@@ -365,7 +368,7 @@ impl BrowsingService {
             song,
             user_rating: rating,
             is_starred: None,
-            suffix
+            suffix,
         };
 
         Ok(complex_song)

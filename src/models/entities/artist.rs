@@ -1,8 +1,8 @@
 //! 艺术家数据库实体
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use chrono::{DateTime, Utc};
 
 use crate::utils::id_builder;
 
@@ -18,7 +18,11 @@ pub struct Artist {
 }
 
 impl Artist {
-    pub fn new(name: String, music_brainz_id: Option<String>, cover_art_path: Option<String>) -> Self {
+    pub fn new(
+        name: String,
+        music_brainz_id: Option<String>,
+        cover_art_path: Option<String>,
+    ) -> Self {
         Self {
             id: id_builder::generate_id(),
             name,

@@ -1,7 +1,7 @@
 //! 搜索结果响应模型
 
-use serde::{Deserialize, Serialize};
 use super::ToXml;
+use serde::{Deserialize, Serialize};
 
 /// 搜索结果响应包装
 #[derive(Debug, Clone, Serialize, Deserialize)]

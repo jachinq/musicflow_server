@@ -1,9 +1,9 @@
 //! 认证服务
 
+use crate::error::AppError;
 use crate::models::dto::{CreateUserRequest, LoginRequest};
 use crate::models::entities::User;
 use crate::utils::{generate_salt, generate_subsonic_token, id_builder};
-use crate::error::AppError;
 use sqlx::SqlitePool;
 
 /// 带令牌的用户响应
@@ -36,16 +36,17 @@ impl AuthService {
     /// 用户注册
     pub async fn register(&self, req: CreateUserRequest) -> Result<UserWithToken, AppError> {
         // 检查用户名是否已存在
-        let existing = sqlx::query_as::<_, User>(
-            "SELECT * FROM users WHERE username = ? OR email = ?"
-        )
-        .bind(&req.username)
-        .bind(&req.email)
-        .fetch_optional(&self.pool)
-        .await?;
+        let existing =
+            sqlx::query_as::<_, User>("SELECT * FROM users WHERE username = ? OR email = ?")
+                .bind(&req.username)
+                .bind(&req.email)
+                .fetch_optional(&self.pool)
+                .await?;
 
         if existing.is_some() {
-            return Err(AppError::validation_error("Username or email already exists"));
+            return Err(AppError::validation_error(
+                "Username or email already exists",
+            ));
         }
 
         // 生成用户ID
@@ -53,7 +54,7 @@ impl AuthService {
 
         // 创建用户(直接存储明文密码)
         sqlx::query(
-            "INSERT INTO users (id, username, password, email, is_admin) VALUES (?, ?, ?, ?, ?)"
+            "INSERT INTO users (id, username, password, email, is_admin) VALUES (?, ?, ?, ?, ?)",
         )
         .bind(&user_id)
         .bind(&req.username)
@@ -83,12 +84,10 @@ impl AuthService {
     /// 用户登录
     pub async fn login(&self, req: LoginRequest) -> Result<UserWithToken, AppError> {
         // 查询用户
-        let user = sqlx::query_as::<_, User>(
-            "SELECT * FROM users WHERE username = ?"
-        )
-        .bind(&req.username)
-        .fetch_optional(&self.pool)
-        .await?;
+        let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE username = ?")
+            .bind(&req.username)
+            .fetch_optional(&self.pool)
+            .await?;
 
         let user = user.ok_or_else(|| AppError::auth_failed("Invalid username or password"))?;
 
@@ -115,11 +114,7 @@ impl AuthService {
     }
 
     /// 修改密码
-    pub async fn change_password(
-        &self,
-        user_id: &str,
-        new_password: &str,
-    ) -> Result<(), AppError> {
+    pub async fn change_password(&self, user_id: &str, new_password: &str) -> Result<(), AppError> {
         sqlx::query("UPDATE users SET password = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
             .bind(new_password)
             .bind(user_id)

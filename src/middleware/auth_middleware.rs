@@ -25,7 +25,7 @@ pub struct ErrorResponse {
 /// 用于内部请求上下文传递的用户声明
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
-    pub sub: String,  // user_id
+    pub sub: String, // user_id
     pub username: String,
     pub is_admin: bool,
     pub exp: usize,
@@ -42,22 +42,15 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         // 从请求扩展中获取 Claims（由认证中间件设置）
-        parts
-            .extensions
-            .get::<Claims>()
-            .cloned()
-            .ok_or((
-                StatusCode::UNAUTHORIZED,
-                "未找到认证信息，请提供有效的认证参数".to_string(),
-            ))
+        parts.extensions.get::<Claims>().cloned().ok_or((
+            StatusCode::UNAUTHORIZED,
+            "未找到认证信息，请提供有效的认证参数".to_string(),
+        ))
     }
 }
 
 /// 尝试使用 Subsonic 查询参数进行认证
-async fn try_subsonic_auth(
-    query: &str,
-    pool: &SqlitePool,
-) -> Option<User> {
+async fn try_subsonic_auth(query: &str, pool: &SqlitePool) -> Option<User> {
     // 解析查询参数
     let params: std::collections::HashMap<String, String> =
         serde_urlencoded::from_str(query).ok()?;
@@ -67,14 +60,27 @@ async fn try_subsonic_auth(
 
     // 尝试密码认证 (p 参数)
     if let Some(password) = params.get("p") {
-        tracing::debug!("try subsonic auth with password username: {} password: {}", username, password);
-        return authenticate_with_password(username, password, pool).await.ok();
+        tracing::debug!(
+            "try subsonic auth with password username: {} password: {}",
+            username,
+            password
+        );
+        return authenticate_with_password(username, password, pool)
+            .await
+            .ok();
     }
 
     // 尝试 token + salt 认证 (t + s 参数)
     if let (Some(token), Some(salt)) = (params.get("t"), params.get("s")) {
-        tracing::debug!("try subsonic auth with token username: {} token: {} salt: {}", username, token, salt);
-        return authenticate_subsonic(username, token, salt, pool).await.ok();
+        tracing::debug!(
+            "try subsonic auth with token username: {} token: {} salt: {}",
+            username,
+            token,
+            salt
+        );
+        return authenticate_subsonic(username, token, salt, pool)
+            .await
+            .ok();
     }
 
     tracing::info!("try subsonic auth failed with query: {}", query);
@@ -87,14 +93,12 @@ async fn authenticate_with_password(
     password: &str,
     pool: &SqlitePool,
 ) -> Result<User, ()> {
-    let user = sqlx::query_as::<_, User>(
-        "SELECT * FROM users WHERE username = ?"
-    )
-    .bind(username)
-    .fetch_optional(pool)
-    .await
-    .map_err(|_| ())?
-    .ok_or(())?;
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE username = ?")
+        .bind(username)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| ())?
+        .ok_or(())?;
 
     // 验证密码(直接比较明文)
     if password != user.password {
@@ -111,14 +115,12 @@ async fn authenticate_subsonic(
     salt: &str,
     pool: &SqlitePool,
 ) -> Result<User, ()> {
-    let user = sqlx::query_as::<_, User>(
-        "SELECT * FROM users WHERE username = ?"
-    )
-    .bind(username)
-    .fetch_optional(pool)
-    .await
-    .map_err(|_| ())?
-    .ok_or(())?;
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE username = ?")
+        .bind(username)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| ())?
+        .ok_or(())?;
 
     // 获取用户的密码
     let password = &user.password;
@@ -128,11 +130,20 @@ async fn authenticate_subsonic(
 
     // 验证 token(不区分大小写)
     if !expected_token.eq_ignore_ascii_case(token) {
-        tracing::error!("subsonic token auth failed with username: {} expected_token: {} token: {}", username, expected_token, token);
+        tracing::error!(
+            "subsonic token auth failed with username: {} expected_token: {} token: {}",
+            username,
+            expected_token,
+            token
+        );
         return Err(());
     }
 
-    tracing::debug!("subsonic token auth success with user: {:?} token: {}", user, token);
+    tracing::debug!(
+        "subsonic token auth success with user: {:?} token: {}",
+        user,
+        token
+    );
     Ok(user)
 }
 
@@ -147,14 +158,17 @@ pub async fn auth_middleware(
     // 允许公开访问的端点
     if path.starts_with("/rest/ping")
         || path.starts_with("/rest/getLicense")
-        || path.starts_with("/api/auth") {
+        || path.starts_with("/api/auth")
+    {
         return next.run(req).await;
     }
 
     // 从扩展中获取数据库连接池
-    let pool = match req.extensions()
+    let pool = match req
+        .extensions()
         .get::<std::sync::Arc<SqlitePool>>()
-        .cloned() {
+        .cloned()
+    {
         Some(pool) => pool,
         None => {
             return (
@@ -164,7 +178,8 @@ pub async fn auth_middleware(
                     message: "服务器配置错误".to_string(),
                     details: Some("数据库连接池未初始化".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -194,7 +209,8 @@ pub async fn auth_middleware(
             message: "认证失败".to_string(),
             details: Some("请提供有效的认证参数 (u+p 或 u+t+s)".to_string()),
         }),
-    ).into_response()
+    )
+        .into_response()
 }
 
 /// 管理员权限检查中间件
@@ -213,7 +229,8 @@ pub async fn admin_middleware(
                     message: "认证失败".to_string(),
                     details: Some("未找到认证信息，请先登录".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -225,7 +242,8 @@ pub async fn admin_middleware(
                 message: "权限不足".to_string(),
                 details: Some("需要管理员权限才能访问此资源".to_string()),
             }),
-        ).into_response();
+        )
+            .into_response();
     }
 
     next.run(req).await
@@ -247,7 +265,7 @@ pub async fn get_user_permissions(
             share_role,
             video_conversion_role,
             scrobbling_enabled
-         FROM users WHERE id = ?"
+         FROM users WHERE id = ?",
     )
     .bind(user_id)
     .fetch_optional(pool)

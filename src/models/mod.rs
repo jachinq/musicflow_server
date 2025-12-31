@@ -7,6 +7,6 @@
 //!
 //! 数据流: Database → DTO (FromRow) → Response (Into/From) → JSON
 
-pub mod entities;
 pub mod dto;
+pub mod entities;
 pub mod response;

@@ -4,8 +4,8 @@
 use crate::error::AppError;
 use crate::extractors::Format;
 use crate::models::response::{
-    SearchResult2, SearchResult2Response,
-    SearchResult3, SearchResult3Response, SearchResultResponse,
+    SearchResult2, SearchResult2Response, SearchResult3, SearchResult3Response,
+    SearchResultResponse,
 };
 use crate::response::ApiResponse;
 use crate::services::search_service::SearchParams;

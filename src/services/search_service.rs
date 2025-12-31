@@ -238,7 +238,13 @@ impl SearchService {
         .fetch_all(&self.ctx.pool)
         .await?;
 
-        tracing::info!("limit {}, offset {}, query={} len={}", count, offset, query, songs.len());
+        tracing::info!(
+            "limit {}, offset {}, query={} len={}",
+            count,
+            offset,
+            query,
+            songs.len()
+        );
         Ok(songs)
     }
 }

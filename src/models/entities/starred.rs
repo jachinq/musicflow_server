@@ -1,9 +1,9 @@
 //! 收藏数据库实体
 #![allow(dead_code)]
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use chrono::{DateTime, Utc};
 
 use crate::utils::id_builder;
 
@@ -19,7 +19,12 @@ pub struct Starred {
 }
 
 impl Starred {
-    pub fn new(user_id: String, artist_id: Option<String>, album_id: Option<String>, song_id: Option<String>) -> Self {
+    pub fn new(
+        user_id: String,
+        artist_id: Option<String>,
+        album_id: Option<String>,
+        song_id: Option<String>,
+    ) -> Self {
         Self {
             id: id_builder::generate_id(),
             user_id,

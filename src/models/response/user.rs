@@ -1,9 +1,9 @@
 //! 用户响应模型 (Subsonic API 格式)
 
-use serde::{Deserialize, Serialize};
+use super::ToXml;
 use crate::models::dto::UserDto;
 use crate::models::entities::User;
-use super::ToXml;
+use serde::{Deserialize, Serialize};
 
 /// 用户响应 (Subsonic 格式)
 #[derive(Debug, Clone, Serialize, Deserialize)]

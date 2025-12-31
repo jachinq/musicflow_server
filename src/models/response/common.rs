@@ -353,10 +353,7 @@ impl ToXml for Captions {
 /// Hls ToXml 实现
 impl ToXml for Hls {
     fn to_xml_element(&self) -> String {
-        format!(
-            r#"<hls url="{}"/>"#,
-            html_escape(&self.url)
-        )
+        format!(r#"<hls url="{}"/>"#, html_escape(&self.url))
     }
 }
 
@@ -446,12 +443,14 @@ impl<T: ToXml> SubsonicResponse<T> {
             xml.push_str("</subsonic-response>");
         } else {
             // 空响应
-            xml.push_str("></subsonic-response
->");
+            xml.push_str(
+                "></subsonic-response
+>",
+            );
         }
 
         // format!(r#"<?xmlversion="1.0" encoding="UTF-8"?>
-        
+
         // {}
         // "#, xml)
         xml

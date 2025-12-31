@@ -1,9 +1,9 @@
 //! 专辑响应模型 (Subsonic API 格式)
 #![allow(dead_code)]
 
-use serde::{Deserialize, Serialize};
-use crate::models::dto::{AlbumDto, AlbumDetailDto};
 use super::ToXml;
+use crate::models::dto::{AlbumDetailDto, AlbumDto};
+use serde::{Deserialize, Serialize};
 
 /// 专辑响应 (Subsonic 格式 - 简略)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,7 +74,7 @@ impl AlbumResponse {
 
     pub fn from_dto_details(dtos: Vec<AlbumDetailDto>) -> Vec<Self> {
         dtos.into_iter().map(Self::from).collect()
-    }    
+    }
 }
 
 /// 专辑详情 (包含歌曲列表)

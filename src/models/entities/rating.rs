@@ -1,9 +1,9 @@
 //! 评分数据库实体
 #![allow(dead_code)]
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use chrono::{DateTime, Utc};
 
 use crate::utils::id_builder;
 

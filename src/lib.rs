@@ -7,13 +7,12 @@ pub mod config;
 pub mod database;
 pub mod error;
 pub mod extractors;
-pub mod models;
-pub mod response;
-pub mod utils;
 pub mod handlers;
 pub mod middleware;
+pub mod models;
+pub mod response;
 pub mod services;
-
+pub mod utils;
 
 // 重新导出常用类型
 pub use config::AppConfig;

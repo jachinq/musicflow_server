@@ -1,8 +1,8 @@
 //! 播放列表响应模型 (Subsonic API 格式)
 
-use serde::{Deserialize, Serialize};
-use crate::models::dto::PlaylistDto;
 use super::{Song, ToXml};
+use crate::models::dto::PlaylistDto;
+use serde::{Deserialize, Serialize};
 
 /// 播放列表响应 (Subsonic 格式 - 简略)
 #[derive(Debug, Clone, Serialize, Deserialize)]

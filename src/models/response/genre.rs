@@ -1,8 +1,8 @@
 //! 流派响应结构
 #![allow(dead_code)]
 
-use serde::{Deserialize, Serialize};
 use super::ToXml;
+use serde::{Deserialize, Serialize};
 
 /// 单个流派
 #[derive(Debug, Clone, Serialize, Deserialize)]

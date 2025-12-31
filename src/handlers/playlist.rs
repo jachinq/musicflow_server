@@ -1,6 +1,10 @@
 //! 播放列表端点处理器
 
-use axum::{extract::Query, routing::{get, post}, Router};
+use axum::{
+    extract::Query,
+    routing::{get, post},
+    Router,
+};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -65,7 +69,10 @@ pub async fn get_playlist(
     let playlist_id = params.id.ok_or_else(|| AppError::missing_parameter("id"))?;
 
     // 调用 Service 层
-    let detail = state.playlist_service.get_playlist_detail(&playlist_id).await?;
+    let detail = state
+        .playlist_service
+        .get_playlist_detail(&playlist_id)
+        .await?;
 
     // 转换为响应格式
     let result = PlaylistDetail {
@@ -89,16 +96,20 @@ pub async fn create_playlist(
     Format(format): Format,
 ) -> Result<ApiResponse<()>, AppError> {
     // 检查播放列表权限
-    let permissions = crate::middleware::auth_middleware::get_user_permissions(&state.pool, &claims.sub)
-        .await
-        .map_err(|_| AppError::access_denied("Failed to check permissions"))?;
+    let permissions =
+        crate::middleware::auth_middleware::get_user_permissions(&state.pool, &claims.sub)
+            .await
+            .map_err(|_| AppError::access_denied("Failed to check permissions"))?;
 
     if !permissions.can_manage_playlist() {
         return Err(AppError::access_denied("Playlist permission required"));
     }
 
     // 调用 Service 层 (带事务保护)
-    state.playlist_service.create_playlist(&claims.sub, body).await?;
+    state
+        .playlist_service
+        .create_playlist(&claims.sub, body)
+        .await?;
 
     Ok(ApiResponse::ok(None, format))
 }
@@ -112,9 +123,10 @@ pub async fn update_playlist(
     Format(format): Format,
 ) -> Result<ApiResponse<()>, AppError> {
     // 检查播放列表权限
-    let permissions = crate::middleware::auth_middleware::get_user_permissions(&state.pool, &claims.sub)
-        .await
-        .map_err(|_| AppError::access_denied("Failed to check permissions"))?;
+    let permissions =
+        crate::middleware::auth_middleware::get_user_permissions(&state.pool, &claims.sub)
+            .await
+            .map_err(|_| AppError::access_denied("Failed to check permissions"))?;
 
     if !permissions.can_manage_playlist() {
         return Err(AppError::access_denied("Playlist permission required"));
@@ -123,7 +135,8 @@ pub async fn update_playlist(
     let playlist_id = params.id.ok_or_else(|| AppError::missing_parameter("id"))?;
 
     // 调用 Service 层 (带事务保护,包含权限检查)
-    state.playlist_service
+    state
+        .playlist_service
         .update_playlist(&playlist_id, &claims.sub, body)
         .await?;
 
@@ -138,9 +151,10 @@ pub async fn delete_playlist(
     Format(format): Format,
 ) -> Result<ApiResponse<()>, AppError> {
     // 检查播放列表权限
-    let permissions = crate::middleware::auth_middleware::get_user_permissions(&state.pool, &claims.sub)
-        .await
-        .map_err(|_| AppError::access_denied("Failed to check permissions"))?;
+    let permissions =
+        crate::middleware::auth_middleware::get_user_permissions(&state.pool, &claims.sub)
+            .await
+            .map_err(|_| AppError::access_denied("Failed to check permissions"))?;
 
     if !permissions.can_manage_playlist() {
         return Err(AppError::access_denied("Playlist permission required"));
@@ -149,7 +163,8 @@ pub async fn delete_playlist(
     let playlist_id = params.id.ok_or_else(|| AppError::missing_parameter("id"))?;
 
     // 调用 Service 层 (包含权限检查)
-    state.playlist_service
+    state
+        .playlist_service
         .delete_playlist(&playlist_id, &claims.sub)
         .await?;
 
@@ -165,9 +180,10 @@ pub async fn append_playlist(
     Format(format): Format,
 ) -> Result<ApiResponse<()>, AppError> {
     // 检查播放列表权限
-    let permissions = crate::middleware::auth_middleware::get_user_permissions(&state.pool, &claims.sub)
-        .await
-        .map_err(|_| AppError::access_denied("Failed to check permissions"))?;
+    let permissions =
+        crate::middleware::auth_middleware::get_user_permissions(&state.pool, &claims.sub)
+            .await
+            .map_err(|_| AppError::access_denied("Failed to check permissions"))?;
 
     if !permissions.can_manage_playlist() {
         return Err(AppError::access_denied("Playlist permission required"));
@@ -178,7 +194,8 @@ pub async fn append_playlist(
     // 如果有歌曲,追加到播放列表
     if let Some(song_ids) = body.song_id {
         // 调用 Service 层 (带事务保护,包含权限检查)
-        state.playlist_service
+        state
+            .playlist_service
             .append_songs(&playlist_id, &claims.sub, song_ids)
             .await?;
     }

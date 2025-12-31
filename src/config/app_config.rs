@@ -1,9 +1,9 @@
 //! 应用配置
 #![allow(dead_code)]
 
-use std::path::PathBuf;
 use dotenvy::dotenv;
 use std::env;
+use std::path::PathBuf;
 
 /// 应用配置结构体
 #[derive(Debug, Clone)]

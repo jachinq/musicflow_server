@@ -1,9 +1,9 @@
 //! 歌曲响应模型 (Subsonic API 格式)
 #![allow(dead_code)]
 
-use serde::{Deserialize, Serialize};
-use crate::{models::dto::{SongDetailDto, SongDto, ComplexSongDto}};
 use super::ToXml;
+use crate::models::dto::{ComplexSongDto, SongDetailDto, SongDto};
+use serde::{Deserialize, Serialize};
 
 /// 歌曲响应 (Subsonic 格式)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -102,7 +102,7 @@ impl From<SongDetailDto> for Song {
 }
 
 impl From<ComplexSongDto> for Song {
-        fn from(dto: ComplexSongDto) -> Self {
+    fn from(dto: ComplexSongDto) -> Self {
         Self {
             id: dto.song.id,
             title: dto.song.title,
@@ -112,7 +112,10 @@ impl From<ComplexSongDto> for Song {
             year: dto.song.year,
             duration: dto.song.duration,
             bit_rate: dto.song.bit_rate,
-            content_type: dto.song.content_type.unwrap_or_else(|| "audio/mpeg".to_string()),
+            content_type: dto
+                .song
+                .content_type
+                .unwrap_or_else(|| "audio/mpeg".to_string()),
             path: dto.song.path,
             track_number: dto.song.track_number,
             disc_number: dto.song.disc_number,

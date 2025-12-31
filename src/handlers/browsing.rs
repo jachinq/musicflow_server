@@ -286,7 +286,10 @@ pub async fn get_song(
 ) -> Result<ApiResponse<SongResponse>, AppError> {
     let user_id = claims.sub;
     // 查询歌曲信息
-    let song = state.browseing_service.get_song(&user_id, &params.id).await?;
+    let song = state
+        .browseing_service
+        .get_song(&user_id, &params.id)
+        .await?;
 
     let result = SongResponse { song: song.into() };
 

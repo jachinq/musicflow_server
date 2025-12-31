@@ -7,7 +7,7 @@
 //! - 统计信息更新
 
 use crate::error::AppError;
-use crate::models::dto::{CreatePlaylistRequest, UpdatePlaylistRequest, SongDto};
+use crate::models::dto::{CreatePlaylistRequest, SongDto, UpdatePlaylistRequest};
 use crate::services::ServiceContext;
 use crate::utils::id_builder;
 use futures::FutureExt;
@@ -57,11 +57,7 @@ impl PlaylistService {
     /// # 返回
     ///
     /// 如果用户是所有者返回 Ok,否则返回错误
-    async fn check_playlist_owner(
-        &self,
-        playlist_id: &str,
-        user_id: &str,
-    ) -> Result<(), AppError> {
+    async fn check_playlist_owner(&self, playlist_id: &str, user_id: &str) -> Result<(), AppError> {
         let owner = sqlx::query_scalar::<_, String>("SELECT owner_id FROM playlists WHERE id = ?")
             .bind(playlist_id)
             .fetch_optional(&self.ctx.pool)
@@ -96,14 +92,16 @@ impl PlaylistService {
 
         let results = playlists
             .into_iter()
-            .map(|(id, name, owner_id, is_public, song_count, duration)| PlaylistInfo {
-                id,
-                name,
-                owner_id,
-                is_public,
-                song_count,
-                duration,
-            })
+            .map(
+                |(id, name, owner_id, is_public, song_count, duration)| PlaylistInfo {
+                    id,
+                    name,
+                    owner_id,
+                    is_public,
+                    song_count,
+                    duration,
+                },
+            )
             .collect();
 
         Ok(results)
@@ -345,11 +343,7 @@ impl PlaylistService {
     ///
     /// * `playlist_id` - 播放列表 ID
     /// * `user_id` - 用户 ID (所有者验证)
-    pub async fn delete_playlist(
-        &self,
-        playlist_id: &str,
-        user_id: &str,
-    ) -> Result<(), AppError> {
+    pub async fn delete_playlist(&self, playlist_id: &str, user_id: &str) -> Result<(), AppError> {
         // 权限检查
         self.check_playlist_owner(playlist_id, user_id).await?;
 
@@ -431,7 +425,7 @@ impl PlaylistService {
                 SUM(duration) as total_duration
              FROM playlist_songs ps
              JOIN songs s ON ps.song_id = s.id
-             WHERE ps.playlist_id = ?"
+             WHERE ps.playlist_id = ?",
         )
         .bind(playlist_id)
         .fetch_one(&mut **tx)
@@ -572,12 +566,11 @@ mod tests {
         let playlist_id = result.unwrap();
 
         // 验证播放列表已创建
-        let count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM playlists WHERE id = ?")
-                .bind(&playlist_id)
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM playlists WHERE id = ?")
+            .bind(&playlist_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(count, 1);
     }
 

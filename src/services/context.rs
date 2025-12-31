@@ -59,7 +59,7 @@ mod tests {
             "CREATE TABLE test_table (
                 id TEXT PRIMARY KEY,
                 value INTEGER
-            )"
+            )",
         )
         .execute(&pool)
         .await

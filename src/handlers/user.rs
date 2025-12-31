@@ -1,7 +1,7 @@
 //! 用户管理端点处理器
 #![allow(dead_code)]
 
-use axum::{Router, extract::Query, routing::get};
+use axum::{extract::Query, routing::get, Router};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -24,7 +24,10 @@ pub async fn get_user(
     Query(params): Query<UserParams>,
     Format(format): Format,
 ) -> Result<ApiResponse<UserResponse>, AppError> {
-    let username = params.username.as_deref().ok_or_else(|| AppError::missing_parameter("username"))?;
+    let username = params
+        .username
+        .as_deref()
+        .ok_or_else(|| AppError::missing_parameter("username"))?;
 
     // 调用 Service 层
     let user = user_service.get_user(username).await?;
@@ -102,7 +105,9 @@ pub async fn update_user(
     let current_user = "admin"; // 临时硬编码
 
     // 调用 Service 层 (包含权限检查和动态SQL构建)
-    user_service.update_user(current_user, &username, body).await?;
+    user_service
+        .update_user(current_user, &username, body)
+        .await?;
 
     Ok(ApiResponse::ok(None, format))
 }

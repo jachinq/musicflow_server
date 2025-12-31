@@ -1,7 +1,7 @@
 //! 收藏响应模型 (Subsonic API 格式)
 
+use super::{AlbumResponse, ArtistResponse, Song, ToXml};
 use serde::{Deserialize, Serialize};
-use super::{ArtistResponse, AlbumResponse, Song, ToXml};
 
 /// 收藏响应 (Subsonic 格式)
 #[derive(Debug, Clone, Serialize, Deserialize)]

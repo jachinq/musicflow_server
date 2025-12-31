@@ -33,12 +33,11 @@ impl UserService {
     ///
     /// 如果用户不存在,返回 false
     pub async fn check_admin(&self, username: &str) -> Result<bool, AppError> {
-        let is_admin = sqlx::query_scalar::<_, bool>(
-            "SELECT is_admin FROM users WHERE username = ?",
-        )
-        .bind(username)
-        .fetch_optional(&self.ctx.pool)
-        .await?;
+        let is_admin =
+            sqlx::query_scalar::<_, bool>("SELECT is_admin FROM users WHERE username = ?")
+                .bind(username)
+                .fetch_optional(&self.ctx.pool)
+                .await?;
 
         Ok(is_admin.unwrap_or(false))
     }
@@ -101,12 +100,11 @@ impl UserService {
         }
 
         // 检查用户名是否已存在
-        let existing = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM users WHERE username = ?)",
-        )
-        .bind(&request.username)
-        .fetch_one(&self.ctx.pool)
-        .await?;
+        let existing =
+            sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM users WHERE username = ?)")
+                .bind(&request.username)
+                .fetch_one(&self.ctx.pool)
+                .await?;
 
         if existing {
             return Err(AppError::validation_error("Username already exists"));
@@ -296,7 +294,9 @@ impl UserService {
             .ok_or_else(|| AppError::not_found("User"))?;
 
         // 使用 AuthService 修改密码
-        self.auth_service.change_password(&user_id, new_password).await?;
+        self.auth_service
+            .change_password(&user_id, new_password)
+            .await?;
 
         Ok(())
     }

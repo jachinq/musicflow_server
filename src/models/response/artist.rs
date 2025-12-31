@@ -1,10 +1,10 @@
 //! 艺术家响应模型 (Subsonic API 格式)
 #![allow(dead_code)]
 
-use serde::{Deserialize, Serialize};
+use super::ToXml;
 use crate::models::dto::{ArtistDetailDto, ArtistDto};
 use crate::models::entities::Artist;
-use super::ToXml;
+use serde::{Deserialize, Serialize};
 
 /// 艺术家响应 (Subsonic 格式)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,7 +31,6 @@ pub struct ArtistResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub album_count: Option<i32>,
 }
-
 
 // Entity -> Response 转换
 impl From<Artist> for ArtistResponse {

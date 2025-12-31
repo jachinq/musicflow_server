@@ -1,26 +1,22 @@
 //! 认证相关处理器，用于服务器后台的认证和授权
 #![allow(dead_code)]
 
-use axum::{
-    Router,
-    routing::post,
-    Json,
-};
-use serde::Deserialize;
-use crate::services::{AuthService, UserWithToken};
-use crate::models::dto::{CreateUserRequest, LoginRequest};
 use crate::error::AppError;
+use crate::models::dto::{CreateUserRequest, LoginRequest};
+use crate::services::{AuthService, UserWithToken};
+use axum::{routing::post, Json, Router};
+use serde::Deserialize;
 use std::sync::Arc;
 
 /// Subsonic 认证参数
 #[derive(Debug, Deserialize)]
 pub struct SubsonicAuthParams {
-    pub u: String,      // username
+    pub u: String,         // username
     pub t: Option<String>, // token
     pub s: Option<String>, // salt
     pub p: Option<String>, // password (明文)
-    pub v: String,      // version
-    pub c: String,      // client name
+    pub v: String,         // version
+    pub c: String,         // client name
 }
 
 /// 用户注册

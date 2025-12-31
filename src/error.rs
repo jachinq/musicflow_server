@@ -1,8 +1,8 @@
 //! 错误处理模块
 
 use axum::{
-    response::{IntoResponse, Response},
     http::StatusCode,
+    response::{IntoResponse, Response},
     Json,
 };
 use serde::Serialize;
@@ -72,7 +72,11 @@ impl IntoResponse for AppError {
             AppError::ServerBusy(msg) => (StatusCode::INTERNAL_SERVER_ERROR, 60, msg),
             AppError::DatabaseError(err) => {
                 tracing::error!("Database error: {}", err);
-                (StatusCode::INTERNAL_SERVER_ERROR, 0, "Database error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    0,
+                    "Database error".to_string(),
+                )
             }
             AppError::IoError(err) => {
                 tracing::error!("IO error: {}", err);
@@ -80,7 +84,11 @@ impl IntoResponse for AppError {
             }
             AppError::AuthError(err) => {
                 tracing::error!("Auth error: {}", err);
-                (StatusCode::UNAUTHORIZED, 30, "Authentication error".to_string())
+                (
+                    StatusCode::UNAUTHORIZED,
+                    30,
+                    "Authentication error".to_string(),
+                )
             }
             AppError::ValidationError(msg) => (StatusCode::BAD_REQUEST, 0, msg),
             AppError::ConfigError(msg) => {
@@ -161,7 +169,10 @@ mod tests {
     #[test]
     fn test_error_display() {
         let err = AppError::missing_parameter("username");
-        assert_eq!(format!("{}", err), "Missing parameter: Required parameter 'username' is missing");
+        assert_eq!(
+            format!("{}", err),
+            "Missing parameter: Required parameter 'username' is missing"
+        );
     }
 
     #[test]

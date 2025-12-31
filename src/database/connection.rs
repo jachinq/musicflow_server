@@ -34,7 +34,7 @@ pub async fn get_db_pool(database_url: &str) -> Result<DbPool, sqlx::Error> {
                 if !parent.as_os_str().is_empty() {
                     fs::create_dir_all(parent).map_err(|e| {
                         sqlx::Error::Configuration(
-                            format!("Failed to create database directory: {}", e).into()
+                            format!("Failed to create database directory: {}", e).into(),
                         )
                     })?;
                 }
@@ -44,7 +44,7 @@ pub async fn get_db_pool(database_url: &str) -> Result<DbPool, sqlx::Error> {
             if !Path::new(db_path).exists() {
                 fs::File::create(db_path).map_err(|e| {
                     sqlx::Error::Configuration(
-                        format!("Failed to create database file: {}", e).into()
+                        format!("Failed to create database file: {}", e).into(),
                     )
                 })?;
                 tracing::info!("Created database file: {}", db_path);

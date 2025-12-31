@@ -8,7 +8,7 @@ use sqlx::FromRow;
 pub struct PlaylistDto {
     pub id: String,
     pub name: String,
-    pub owner: String,  // 所有者用户名
+    pub owner: String, // 所有者用户名
     pub is_public: bool,
     pub song_count: i32,
     pub duration: i32,

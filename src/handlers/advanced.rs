@@ -3,21 +3,20 @@
 #![allow(dead_code)]
 
 use axum::{
-    Router,
-    routing::{get, post},
     extract::Query,
+    routing::{get, post},
+    Router,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use sqlx::SqlitePool;
+use std::sync::Arc;
 
-use crate::{error::AppError, utils::id_builder};
-use crate::models::response::{
-    NowPlaying, NowPlayingEntry,
-    ChatMessages, ChatMessage, Videos, Video, VideoInfo, Hls, ToXml,
-};
 use crate::extractors::Format;
+use crate::models::response::{
+    ChatMessage, ChatMessages, Hls, NowPlaying, NowPlayingEntry, ToXml, Video, VideoInfo, Videos,
+};
 use crate::response::ApiResponse;
+use crate::{error::AppError, utils::id_builder};
 
 /// 通用参数
 #[derive(Debug, Deserialize)]
@@ -34,7 +33,7 @@ pub struct CommonParams {
 /// 聊天消息参数
 #[derive(Debug, Deserialize)]
 pub struct GetChatMessagesParams {
-    pub since: Option<i64>,  // 时间戳
+    pub since: Option<i64>, // 时间戳
     pub u: String,
     pub t: Option<String>,
     pub s: Option<String>,
@@ -137,7 +136,7 @@ pub async fn get_now_playing(
          JOIN songs s ON np.song_id = s.id
          JOIN artists ar ON s.artist_id = ar.id
          WHERE np.started_at >= ?
-         ORDER BY np.started_at DESC"
+         ORDER BY np.started_at DESC",
     )
     .bind(fifteen_minutes_ago.timestamp())
     .fetch_all(&*pool)
@@ -183,7 +182,11 @@ pub async fn get_system_info(
             music_folder: vec![music_folder],
         },
         indexing: false,
-        scan_date: Some(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()),
+        scan_date: Some(
+            chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string(),
+        ),
     };
 
     Ok(ApiResponse::ok(Some(result), format))
@@ -202,7 +205,7 @@ pub async fn get_chat_messages(
          FROM chat_messages
          WHERE timestamp > ?
          ORDER BY timestamp DESC
-         LIMIT 100"
+         LIMIT 100",
     )
     .bind(since)
     .fetch_all(&*pool)
@@ -235,20 +238,18 @@ pub async fn add_chat_message(
     let user_id = &claims.sub;
 
     // 获取用户名
-    let username = sqlx::query_scalar::<_, String>(
-        "SELECT username FROM users WHERE id = ?"
-    )
-    .bind(user_id)
-    .fetch_optional(&*pool)
-    .await?
-    .ok_or_else(|| AppError::not_found("User"))?;
+    let username = sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(&*pool)
+        .await?
+        .ok_or_else(|| AppError::not_found("User"))?;
 
     let id = id_builder::generate_id();
     let timestamp = chrono::Utc::now().timestamp();
 
     sqlx::query(
         "INSERT INTO chat_messages (id, user_id, username, message, timestamp)
-         VALUES (?, ?, ?, ?, ?)"
+         VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(user_id)
@@ -274,7 +275,7 @@ pub async fn get_videos(
         "SELECT id, title, content_type
          FROM videos
          ORDER BY created_at DESC
-         LIMIT ? OFFSET ?"
+         LIMIT ? OFFSET ?",
     )
     .bind(size)
     .bind(offset)
@@ -290,9 +291,7 @@ pub async fn get_videos(
         })
         .collect();
 
-    let result = Videos {
-        videos: video_list,
-    };
+    let result = Videos { videos: video_list };
 
     Ok(ApiResponse::ok(Some(result), format))
 }
@@ -303,13 +302,11 @@ pub async fn get_video_info(
     axum::extract::State(pool): axum::extract::State<Arc<SqlitePool>>,
     Query(params): Query<GetVideoInfoParams>,
 ) -> Result<ApiResponse<VideoInfo>, AppError> {
-    let video = sqlx::query_as::<_, (String, String)>(
-        "SELECT id, title FROM videos WHERE id = ?"
-    )
-    .bind(&params.id)
-    .fetch_optional(&*pool)
-    .await?
-    .ok_or_else(|| AppError::not_found("Video"))?;
+    let video = sqlx::query_as::<_, (String, String)>("SELECT id, title FROM videos WHERE id = ?")
+        .bind(&params.id)
+        .fetch_optional(&*pool)
+        .await?
+        .ok_or_else(|| AppError::not_found("Video"))?;
 
     let result = VideoInfo {
         id: video.0,
@@ -359,17 +356,11 @@ impl ToXml for SystemInfoResponse {
         xml.push_str(&self.music_folders.to_xml_element());
 
         // indexing
-        xml.push_str(&format!(
-            r#"<indexing>{}</indexing>"#,
-            self.indexing
-        ));
+        xml.push_str(&format!(r#"<indexing>{}</indexing>"#, self.indexing));
 
         // scanDate
         if let Some(scan_date) = &self.scan_date {
-            xml.push_str(&format!(
-                r#"<scanDate>{}</scanDate>"#,
-                scan_date
-            ));
+            xml.push_str(&format!(r#"<scanDate>{}</scanDate>"#, scan_date));
         }
 
         xml.push_str("</systemInfo>");
@@ -394,11 +385,6 @@ impl ToXml for MusicFolders {
 /// MusicFolder ToXml 实现
 impl ToXml for MusicFolder {
     fn to_xml_element(&self) -> String {
-        format!(
-            r#"<musicFolder id="{}" name="{}"/>"#,
-            self.id,
-            self.name
-        )
+        format!(r#"<musicFolder id="{}" name="{}"/>"#, self.id, self.name)
     }
 }
-

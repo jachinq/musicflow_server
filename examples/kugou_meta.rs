@@ -16,17 +16,12 @@ fn _parse_json() -> Result<()> {
 "imgurl":"http:\/\/singerimg.kugou.com\/uploadpic\/softhead\/{size}\/20250331\/20250331114201311261.jpg"},"errcode":0,"status":1,"error":""}
     "#;
 
-
     let text = text.trim().replace(" ", "");
 
     let json: serde_json::Value = serde_json::from_str(&text)?;
     println!("{:?}", json);
 
-
-
-
     Ok(())
-
 }
 
 async fn get_kugou_album_cover() {
