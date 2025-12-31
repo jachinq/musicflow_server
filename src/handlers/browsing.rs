@@ -12,6 +12,7 @@ use crate::models::response::{
 use crate::response::ApiResponse;
 use crate::services::browsing_service::AlbumListType;
 use crate::services::BrowsingService;
+use crate::utils::Pinyin;
 use axum::{extract::Query, routing::get, Router};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -68,17 +69,11 @@ pub async fn get_indexes(
         std::collections::HashMap::new();
 
     for artist in artists {
-        let first_char = artist
-            .name
-            .chars()
-            .next()
-            .unwrap_or('#')
-            .to_uppercase()
-            .to_string();
+        let first_char = Pinyin::new().first_char(&artist.name).to_uppercase();
         let artist = ArtistResponse {
+            cover_art: Some(format!("ar-{}", artist.id)),
             id: artist.id,
             name: artist.name,
-            cover_art: None,
             album_count: Some(0), // TODO 这里可以查询专辑数量
         };
         index_map.entry(first_char).or_default().push(artist);
@@ -204,13 +199,7 @@ pub async fn get_artists(
 
     let mut index_map: HashMap<String, Vec<ArtistResponse>> = HashMap::new();
     artist.into_iter().for_each(|a| {
-        let first_char = a
-            .name
-            .chars()
-            .next()
-            .unwrap_or('#')
-            .to_uppercase()
-            .to_string();
+        let first_char = Pinyin::new().first_char(&a.name).to_uppercase();
         index_map
             .entry(first_char)
             .or_default()
@@ -246,9 +235,9 @@ pub async fn get_artist(
 
     let result = ArtistDetailResponse {
         artist: ArtistDetail {
+            cover_art: Some(format!("ar-{}", artist.id)),
             id: artist.id,
             name: artist.name,
-            cover_art: artist.cover_art_path,
             album_count: album_list.len() as i32,
             album: AlbumResponse::from_dto_details(album_list),
         },
@@ -451,7 +440,10 @@ pub async fn get_top_songs(
     Query(params): Query<GetTopSongsParams>,
 ) -> Result<ApiResponse<TopSongsResponse>, AppError> {
     let count = params.count.unwrap_or(50).min(5000); // 默认50首，最多5000首
-    let songs = state.browseing_service.get_top_songs(&params.artist, count).await?;
+    let songs = state
+        .browseing_service
+        .get_top_songs(&params.artist, count)
+        .await?;
     let song_responses: Vec<Song> = songs.into_iter().map(|dto| dto.into()).collect();
 
     let result = TopSongsResponse {
@@ -472,7 +464,10 @@ pub async fn get_songs_by_genre(
     let count = params.count.unwrap_or(10).min(500); // 默认10首，最多500首
     let offset = params.offset.unwrap_or(0);
 
-    let songs = state.browseing_service.get_songs_by_genre(&params.genre, count, offset).await?;
+    let songs = state
+        .browseing_service
+        .get_songs_by_genre(&params.genre, count, offset)
+        .await?;
     let song_responses: Vec<Song> = songs.into_iter().map(|dto| dto.into()).collect();
 
     let result = SongsByGenreResponse {
@@ -515,10 +510,7 @@ pub struct BrowsingState {
     pub browseing_service: Arc<BrowsingService>,
 }
 
-pub fn routes(
-    pool: Arc<sqlx::SqlitePool>,
-    browseing_service: Arc<BrowsingService>,
-) -> Router {
+pub fn routes(pool: Arc<sqlx::SqlitePool>, browseing_service: Arc<BrowsingService>) -> Router {
     let browsing_state = BrowsingState {
         pool: pool.clone(),
         browseing_service,

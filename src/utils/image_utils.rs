@@ -246,6 +246,11 @@ pub fn extract_audio_metadata_static(path: &Path) -> Result<AudioMetadata, AppEr
 
     let mut metadata = AudioMetadata::default();
 
+    // 获取文件大小和 MIME 类型
+    let file_size = std::fs::metadata(path).map(|m| m.len()).ok();
+    metadata.file_size = file_size;
+    metadata.content_type = get_content_type(path);
+
     // 获取时长信息
     if let Some(time_base) = track.codec_params.time_base {
         if let Some(n_frames) = track.codec_params.n_frames {
@@ -257,6 +262,13 @@ pub fn extract_audio_metadata_static(path: &Path) -> Result<AudioMetadata, AppEr
     // 获取采样率
     if let Some(sample_rate) = track.codec_params.sample_rate {
         metadata.sample_rate = Some(sample_rate as i32);
+    }
+
+    // 估算比特率:如果有文件大小和时长
+    if let Some(size) = file_size {
+        if metadata.duration_secs > 0 {
+            metadata.bit_rate = Some(((size * 8) / metadata.duration_secs) as i32);
+        }
     }
 
     // 获取声道数
@@ -338,6 +350,27 @@ pub fn extract_audio_metadata_static(path: &Path) -> Result<AudioMetadata, AppEr
     }
 
     Ok(metadata)
+}
+
+/// 根据文件扩展名获取 MIME 类型
+fn get_content_type(path: &Path) -> String {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    match ext.as_str() {
+        "mp3" => "audio/mpeg",
+        "flac" => "audio/flac",
+        "wav" => "audio/wav",
+        "m4a" | "mp4" => "audio/mp4",
+        "aac" => "audio/aac",
+        "ogg" => "audio/ogg",
+        "opus" => "audio/opus",
+        _ => "audio/mpeg",
+    }
+    .to_string()
 }
 
 /// 静态方法:预热封面缓存

@@ -1054,7 +1054,7 @@ mod tests {
             .init();
 
         let test_file = std::env::var("TEST_AUDIO_FILE")
-            .unwrap_or_else(|_| "./music/许嵩 - 燕归巢.flac".to_string());
+            .unwrap_or_else(|_| "./music/Evanescence - Bring Me To Life.mp3".to_string());
 
         if test_file.is_empty() {
             return;
@@ -1098,13 +1098,13 @@ mod tests {
                 if let Some((mime, data)) = metadata.cover_art_raw {
                     println!("封面: {} ({} bytes)", mime, data.len());
 
-                    let album_id = Uuid::new_v4().to_string();
-                    let result =
-                        ScanService::process_cover_art_for_album(&album_id, &mime, data).await;
+                    // let album_id = Uuid::new_v4().to_string();
+                    // let result =
+                    //     ScanService::process_cover_art_for_album(&album_id, &mime, data).await;
 
-                    // 等待 3s 异步图片处理任务结束
-                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-                    println!("封面处理结果: album_id={} result={:?}", album_id, result);
+                    // // 等待 3s 异步图片处理任务结束
+                    // tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    // println!("封面处理结果: album_id={} result={:?}", album_id, result);
                 }
 
                 println!("=====================================\n");

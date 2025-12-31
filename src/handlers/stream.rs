@@ -212,7 +212,7 @@ pub async fn get_cover_art(
 
                 // 3.2 从酷狗获取封面图片
                 let response = MetaClient::new()
-                    .get_kugou_cover_stream(&keyword)
+                    .get_kugou_album_cover_stream(&keyword)
                     .await
                     .map_err(|e| AppError::NotFound(format!("Failed to fetch cover: {}", e)))?;
 
