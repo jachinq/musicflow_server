@@ -31,6 +31,8 @@ pub struct Song {
     pub cover_art: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub album_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artist_id: Option<String>,
 }
 
 // DTO -> Response 转换
@@ -51,6 +53,7 @@ impl From<SongDto> for Song {
             disc_number: None,
             cover_art: None,
             album_id: None,
+            artist_id: None,
         }
     }
 }
@@ -71,7 +74,8 @@ impl From<SongDetailDto> for Song {
             track_number: dto.track_number,
             disc_number: dto.disc_number,
             cover_art: dto.cover_art,
-            album_id: Some(dto.album_id)
+            album_id: Some(dto.album_id),
+            artist_id: Some(dto.artist_id),
         }
     }
 }
@@ -164,6 +168,9 @@ impl ToXml for Song {
         }
         if let Some(album_id) = &self.album_id {
             xml.push_str(&format!(r#" albumId="{}""#, album_id));
+        }
+        if let Some(artist_id) = &self.artist_id {
+            xml.push_str(&format!(r#" artistId="{}""#, artist_id));
         }
         xml.push_str("/>");
         xml

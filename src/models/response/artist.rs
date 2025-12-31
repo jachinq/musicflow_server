@@ -62,7 +62,7 @@ impl From<ArtistDetailDto> for ArtistResponse {
             id: dto.id,
             name: dto.name,
             cover_art: dto.cover_art_path,
-            album_count: dto.album_count,
+            album_count: None,
         }
     }
 }
