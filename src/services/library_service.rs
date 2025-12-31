@@ -9,6 +9,7 @@
 use crate::error::AppError;
 use crate::models::dto::{AlbumDto, ArtistDto, SongDto};
 use crate::services::ServiceContext;
+use crate::utils::id_builder;
 use futures::FutureExt;
 use std::sync::Arc;
 
@@ -73,7 +74,7 @@ impl LibraryService {
                         "INSERT INTO scrobbles (id, user_id, song_id, timestamp, submission, created_at)
                          VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
                     )
-                    .bind(uuid::Uuid::new_v4().to_string())
+                    .bind(id_builder::generate_id())
                     .bind(&user_id)
                     .bind(&song_id)
                     .bind(timestamp)
@@ -124,7 +125,7 @@ impl LibraryService {
         item_type: StarItemType,
         item_id: &str,
     ) -> Result<(), AppError> {
-        let id = uuid::Uuid::new_v4().to_string();
+        let id = id_builder::generate_id();
 
         let query = match item_type {
             StarItemType::Artist => {
@@ -204,7 +205,7 @@ impl LibraryService {
             "INSERT OR REPLACE INTO ratings (id, user_id, song_id, rating, created_at, updated_at)
              VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
         )
-        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(id_builder::generate_id())
         .bind(user_id)
         .bind(item_id)
         .bind(rating)

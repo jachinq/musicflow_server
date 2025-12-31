@@ -9,6 +9,7 @@
 use crate::error::AppError;
 use crate::models::dto::{CreatePlaylistRequest, UpdatePlaylistRequest, SongDto};
 use crate::services::ServiceContext;
+use crate::utils::id_builder;
 use futures::FutureExt;
 use std::sync::Arc;
 
@@ -165,7 +166,7 @@ impl PlaylistService {
         user_id: &str,
         request: CreatePlaylistRequest,
     ) -> Result<String, AppError> {
-        let playlist_id = uuid::Uuid::new_v4().to_string();
+        let playlist_id = id_builder::generate_id();
         let user_id = user_id.to_string();
         let name = request.name.clone();
         let song_ids = request.song_id.clone();

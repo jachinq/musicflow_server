@@ -3,8 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
+
+use crate::utils::id_builder;
 
 /// 评分实体 (完整数据库表结构)
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -28,7 +29,7 @@ impl Rating {
         rating: i32,
     ) -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: id_builder::generate_id(),
             user_id,
             artist_id,
             album_id,

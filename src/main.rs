@@ -4,6 +4,7 @@
 
 use crate::services::{song_service::CommState, BrowsingService};
 use axum::{middleware as axum_middleware, Router};
+use musicflow_server::utils::id_builder;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::services::ServeDir;
@@ -175,7 +176,7 @@ async fn create_default_admin(pool: &DbPool) -> Result<(), anyhow::Error> {
     if count == 0 {
         tracing::info!("No admin user found, creating default admin...");
 
-        let id = uuid::Uuid::new_v4().to_string();
+        let id = id_builder::generate_id();
 
         sqlx::query(
             "INSERT INTO users (id, username, password, email, is_admin) VALUES (?, ?, ?, ?, ?)",

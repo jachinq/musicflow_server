@@ -3,7 +3,8 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
+
+use crate::utils::id_builder;
 
 /// 专辑实体 - 对应 albums 表的完整结构
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -32,7 +33,7 @@ impl Album {
         cover_art_path: Option<String>,
     ) -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: id_builder::generate_id(),
             artist_id,
             name,
             year,

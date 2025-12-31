@@ -2,10 +2,9 @@
 
 use crate::models::dto::{CreateUserRequest, LoginRequest};
 use crate::models::entities::User;
-use crate::utils::{generate_subsonic_token, generate_salt};
+use crate::utils::{generate_salt, generate_subsonic_token, id_builder};
 use crate::error::AppError;
 use sqlx::SqlitePool;
-use uuid::Uuid;
 
 /// 带令牌的用户响应
 #[derive(Debug, serde::Serialize)]
@@ -50,7 +49,7 @@ impl AuthService {
         }
 
         // 生成用户ID
-        let user_id = Uuid::new_v4().to_string();
+        let user_id = id_builder::generate_id();
 
         // 创建用户(直接存储明文密码)
         sqlx::query(

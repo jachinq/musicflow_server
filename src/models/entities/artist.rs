@@ -3,7 +3,8 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
+
+use crate::utils::id_builder;
 
 /// 艺术家实体 - 对应 artists 表的完整结构
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -19,7 +20,7 @@ pub struct Artist {
 impl Artist {
     pub fn new(name: String, music_brainz_id: Option<String>, cover_art_path: Option<String>) -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: id_builder::generate_id(),
             name,
             music_brainz_id,
             cover_art_path,

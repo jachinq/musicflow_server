@@ -13,7 +13,6 @@ use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::{MetadataOptions, StandardTagKey};
 use symphonia::core::probe::Hint;
-use uuid::Uuid;
 use walkdir::WalkDir;
 
 /// 音乐库扫描服务
@@ -874,7 +873,7 @@ mod tests {
                 if let Some((mime, data)) = metadata.cover_art_raw {
                     println!("封面: {} ({} bytes)", mime, data.len());
 
-                    // let album_id = Uuid::new_v4().to_string();
+                    // let album_id = id_builder::generate_id();
                     // let result =
                     //     ScanService::process_cover_art_for_album(&album_id, &mime, data).await;
 

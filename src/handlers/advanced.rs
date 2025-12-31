@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use sqlx::SqlitePool;
 
-use crate::error::AppError;
+use crate::{error::AppError, utils::id_builder};
 use crate::models::response::{
     NowPlaying, NowPlayingEntry,
     ChatMessages, ChatMessage, Videos, Video, VideoInfo, Hls, ToXml,
@@ -243,7 +243,7 @@ pub async fn add_chat_message(
     .await?
     .ok_or_else(|| AppError::not_found("User"))?;
 
-    let id = uuid::Uuid::new_v4().to_string();
+    let id = id_builder::generate_id();
     let timestamp = chrono::Utc::now().timestamp();
 
     sqlx::query(

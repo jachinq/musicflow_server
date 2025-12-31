@@ -3,8 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
+
+use crate::utils::id_builder;
 
 /// 播放列表实体 (完整数据库表结构)
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -23,7 +24,7 @@ pub struct Playlist {
 impl Playlist {
     pub fn new(owner_id: String, name: String, comment: Option<String>, is_public: bool) -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: id_builder::generate_id(),
             owner_id,
             name,
             comment,

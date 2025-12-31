@@ -3,8 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
+
+use crate::utils::id_builder;
 
 /// 播放记录实体 (完整数据库表结构)
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -20,7 +21,7 @@ pub struct Scrobble {
 impl Scrobble {
     pub fn new(user_id: String, song_id: String, timestamp: DateTime<Utc>, submission: bool) -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: id_builder::generate_id(),
             user_id,
             song_id,
             timestamp,
