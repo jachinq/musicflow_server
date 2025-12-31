@@ -373,6 +373,69 @@ impl BrowsingService {
 
         Ok(complex_song)
     }
+
+    /// 获取相似歌曲 (基于元数据)
+    ///
+    /// # 参数
+    ///
+    /// * `song_id` - 歌曲 ID
+    /// * `count` - 返回数量
+    ///
+    /// # 相似度算法
+    ///
+    /// 使用加权评分系统计算相似度:
+    /// - 同艺术家: 5 分
+    /// - 同流派: 4 分
+    /// - 年代接近 (±2年): 2 分
+    /// - 同专辑: 3 分 (权重较低,避免推荐过多同专辑歌曲)
+    ///
+    /// 最终结果按分数降序排列,并添加随机性保证多样性
+    pub async fn get_similar_songs(
+        &self,
+        song_id: &str,
+        count: i32,
+    ) -> Result<Vec<SongDetailDto>, AppError> {
+        // 首先获取目标歌曲的信息
+        let target_song = sqlx::query_as::<_, SongDetailDto>(&format!(
+            "{} WHERE s.id = ?",
+            sql_utils::detail_sql()
+        ))
+        .bind(song_id)
+        .fetch_optional(&self.ctx.pool)
+        .await?
+        .ok_or_else(|| AppError::not_found("Song"))?;
+
+        // 构建相似度查询
+        let query = format!(
+            "{}
+             WHERE s.id != ?
+             ORDER BY (
+                -- 同艺术家得分
+                CASE WHEN s.artist_id = ? THEN 5 ELSE 0 END +
+                -- 同流派得分
+                CASE WHEN s.genre IS NOT NULL AND s.genre = ? THEN 4 ELSE 0 END +
+                -- 年代接近度得分 (±2年内)
+                CASE WHEN s.year IS NOT NULL AND ? IS NOT NULL AND abs(s.year - ?) <= 2 THEN 2 ELSE 0 END +
+                -- 同专辑得分 (权重较低)
+                CASE WHEN s.album_id = ? THEN 3 ELSE 0 END
+             ) DESC, RANDOM()
+             LIMIT ?",
+            sql_utils::detail_sql()
+        );
+
+        let songs = sqlx::query_as::<_, SongDetailDto>(&query)
+            .bind(song_id) // 排除目标歌曲
+            .bind(&target_song.artist_id) // 同艺术家判断
+            .bind(&target_song.genre) // 同流派判断
+            .bind(&target_song.year) // 年代判断 (第一个)
+            .bind(&target_song.year) // 年代判断 (第二个)
+            .bind(&target_song.album_id) // 同专辑判断
+            .bind(count)
+            .fetch_all(&self.ctx.pool)
+            .await?;
+
+        Ok(songs)
+    }
 }
 
 #[cfg(test)]

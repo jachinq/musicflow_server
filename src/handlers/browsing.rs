@@ -486,6 +486,36 @@ pub async fn get_songs_by_genre(
     Ok(ApiResponse::ok(Some(result), format))
 }
 
+/// 获取相似歌曲参数
+#[derive(Debug, Deserialize)]
+pub struct GetSimilarSongsParams {
+    pub id: String,
+    pub count: Option<i32>,
+}
+
+/// GET /rest/getSimilarSongs2 - 获取相似歌曲 (基于元数据)
+pub async fn get_similar_songs2(
+    Format(format): Format,
+    axum::extract::State(state): axum::extract::State<BrowsingState>,
+    Query(params): Query<GetSimilarSongsParams>,
+) -> Result<ApiResponse<RandomSongsResponse>, AppError> {
+    let count = params.count.unwrap_or(50).min(500);
+    let songs = state
+        .browseing_service
+        .get_similar_songs(&params.id, count)
+        .await?;
+
+    let song_responses = Song::from_detail_dtos(songs);
+
+    let result = RandomSongsResponse {
+        random_songs: RandomSongs {
+            song: song_responses,
+        },
+    };
+
+    Ok(ApiResponse::ok(Some(result), format))
+}
+
 /// GET /rest/getGenres - 获取所有流派
 pub async fn get_genres(
     Format(format): Format,
@@ -538,5 +568,6 @@ pub fn routes(pool: Arc<sqlx::SqlitePool>, browseing_service: Arc<BrowsingServic
         .route("/rest/getArtistInfo2", get(get_artist_info2))
         .route("/rest/getTopSongs", get(get_top_songs))
         .route("/rest/getSongsByGenre", get(get_songs_by_genre))
+        .route("/rest/getSimilarSongs2", get(get_similar_songs2))
         .with_state(browsing_state)
 }
