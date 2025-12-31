@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use crate::error::AppError;
 use crate::extractors::Format;
+use crate::middleware::auth_middleware::Claims;
 use crate::models::dto::{ChangePasswordRequest, CreateUserRequest, UpdateUserRequest};
 use crate::models::response::{UserResponse, UsersResponse};
 use crate::response::ApiResponse;
@@ -38,14 +39,12 @@ pub async fn get_user(
 
 /// GET /rest/getUsers - 获取所有用户(仅管理员)
 pub async fn get_users(
+    claims: Claims,
     axum::extract::State(user_service): axum::extract::State<Arc<UserService>>,
     Format(format): Format,
 ) -> Result<ApiResponse<UsersResponse>, AppError> {
-    // TODO: 需要从认证中间件获取当前用户名
-    let current_user = "admin"; // 临时硬编码,后续需从认证中间件获取
-
     // 调用 Service 层 (包含权限检查)
-    let users = user_service.get_all_users(current_user).await?;
+    let users = user_service.get_all_users(claims.is_admin).await?;
 
     let user_responses: Vec<UserResponse> = users.into_iter().map(|u| u.into()).collect();
 
@@ -58,21 +57,20 @@ pub async fn get_users(
 
 /// POST /rest/createUser - 创建用户(仅管理员)
 pub async fn create_user(
+    claims: Claims,
     axum::extract::State(user_service): axum::extract::State<Arc<UserService>>,
     Query(body): Query<CreateUserRequest>,
     Format(format): Format,
 ) -> Result<ApiResponse<()>, AppError> {
-    // TODO: 需要从认证中间件获取当前用户名
-    let current_user = "admin"; // 临时硬编码
-
     // 调用 Service 层 (包含权限检查和用户存在性检查)
-    user_service.create_user(current_user, body).await?;
+    user_service.create_user(claims.is_admin, body).await?;
 
     Ok(ApiResponse::ok(None, format))
 }
 
 /// POST /rest/deleteUser - 删除用户(仅管理员)
 pub async fn delete_user(
+    claims: Claims,
     axum::extract::State(user_service): axum::extract::State<Arc<UserService>>,
     Query(params): Query<UserParams>,
     Format(format): Format,
@@ -81,17 +79,15 @@ pub async fn delete_user(
         .username
         .ok_or_else(|| AppError::missing_parameter("username"))?;
 
-    // TODO: 需要从认证中间件获取当前用户名
-    let current_user = "admin"; // 临时硬编码
-
     // 调用 Service 层 (包含权限检查和自删除检查)
-    user_service.delete_user(current_user, &username).await?;
+    user_service.delete_user(claims.is_admin, &claims.username, &username).await?;
 
     Ok(ApiResponse::ok(None, format))
 }
 
 /// POST /rest/updateUser - 更新用户(仅管理员)
 pub async fn update_user(
+    claims: Claims,
     axum::extract::State(user_service): axum::extract::State<Arc<UserService>>,
     Query(params): Query<UserParams>,
     Query(body): Query<UpdateUserRequest>,
@@ -101,12 +97,9 @@ pub async fn update_user(
         .username
         .ok_or_else(|| AppError::missing_parameter("username"))?;
 
-    // TODO: 需要从认证中间件获取当前用户名
-    let current_user = "admin"; // 临时硬编码
-
     // 调用 Service 层 (包含权限检查和动态SQL构建)
     user_service
-        .update_user(current_user, &username, body)
+        .update_user(claims.is_admin, &username, body)
         .await?;
 
     Ok(ApiResponse::ok(None, format))
@@ -114,16 +107,14 @@ pub async fn update_user(
 
 /// POST /rest/changePassword - 修改密码
 pub async fn change_password(
+    claims: Claims,
     axum::extract::State(user_service): axum::extract::State<Arc<UserService>>,
     Query(body): Query<ChangePasswordRequest>,
     Format(format): Format,
 ) -> Result<ApiResponse<()>, AppError> {
-    // TODO: 需要从认证中间件获取当前用户名
-    let current_user = "admin"; // 临时硬编码
-
     // 调用 Service 层 (包含权限检查)
     user_service
-        .change_password(current_user, &body.username, &body.password)
+        .change_password(claims.is_admin, &claims.username, &body.username, &body.password)
         .await?;
 
     Ok(ApiResponse::ok(None, format))

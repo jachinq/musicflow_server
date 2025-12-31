@@ -8,7 +8,7 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::error::AppError;
+use crate::{error::AppError, middleware::auth_middleware};
 use crate::extractors::Format;
 use crate::models::dto::{CreatePlaylistRequest, UpdatePlaylistRequest};
 use crate::models::response::{PlaylistDetail, PlaylistResponse, Playlists, Song};
@@ -30,12 +30,13 @@ pub struct PlaylistParams {
 
 /// GET /rest/getPlaylists - 获取所有播放列表
 pub async fn get_playlists(
+    claims: auth_middleware::Claims,
     axum::extract::State(state): axum::extract::State<PlaylistState>,
     Query(_params): Query<PlaylistParams>,
     Format(format): Format,
 ) -> Result<ApiResponse<Playlists>, AppError> {
-    // TODO: 需要从认证中间件获取当前用户名
-    let username = "admin"; // 临时硬编码
+    // 认证中间件获取当前用户名
+    let username = &claims.username;
 
     // 调用 Service 层
     let playlists = state.playlist_service.get_playlists(username).await?;

@@ -23,25 +23,6 @@ impl UserService {
         Self { ctx, auth_service }
     }
 
-    /// 检查用户是否为管理员
-    ///
-    /// # 参数
-    ///
-    /// * `username` - 用户名
-    ///
-    /// # 返回
-    ///
-    /// 如果用户不存在,返回 false
-    pub async fn check_admin(&self, username: &str) -> Result<bool, AppError> {
-        let is_admin =
-            sqlx::query_scalar::<_, bool>("SELECT is_admin FROM users WHERE username = ?")
-                .bind(username)
-                .fetch_optional(&self.ctx.pool)
-                .await?;
-
-        Ok(is_admin.unwrap_or(false))
-    }
-
     /// 获取单个用户
     ///
     /// # 参数
@@ -61,14 +42,14 @@ impl UserService {
     ///
     /// # 参数
     ///
-    /// * `requester` - 请求用户的用户名
+    /// * `is_admin` - 请求用户是否为管理员
     ///
     /// # 权限
     ///
     /// 需要管理员权限
-    pub async fn get_all_users(&self, requester: &str) -> Result<Vec<User>, AppError> {
+    pub async fn get_all_users(&self, is_admin: bool) -> Result<Vec<User>, AppError> {
         // 权限检查
-        if !self.check_admin(requester).await? {
+        if !is_admin {
             return Err(AppError::access_denied("Admin only"));
         }
 
@@ -83,7 +64,7 @@ impl UserService {
     ///
     /// # 参数
     ///
-    /// * `requester` - 请求用户的用户名
+    /// * `is_admin` - 请求用户是否为管理员
     /// * `request` - 创建用户请求
     ///
     /// # 权限
@@ -91,11 +72,11 @@ impl UserService {
     /// 需要管理员权限
     pub async fn create_user(
         &self,
-        requester: &str,
+        is_admin: bool,
         request: CreateUserRequest,
     ) -> Result<(), AppError> {
         // 权限检查
-        if !self.check_admin(requester).await? {
+        if !is_admin {
             return Err(AppError::access_denied("Admin only"));
         }
 
@@ -120,20 +101,21 @@ impl UserService {
     ///
     /// # 参数
     ///
-    /// * `requester` - 请求用户的用户名
+    /// * `is_admin` - 请求用户是否为管理员
+    /// * `requester_username` - 请求用户的用户名(用于防止删除自己)
     /// * `username` - 要删除的用户名
     ///
     /// # 权限
     ///
     /// 需要管理员权限,且不能删除自己
-    pub async fn delete_user(&self, requester: &str, username: &str) -> Result<(), AppError> {
+    pub async fn delete_user(&self, is_admin: bool, requester_username: &str, username: &str) -> Result<(), AppError> {
         // 权限检查
-        if !self.check_admin(requester).await? {
+        if !is_admin {
             return Err(AppError::access_denied("Admin only"));
         }
 
         // 不能删除自己
-        if username == requester {
+        if username == requester_username {
             return Err(AppError::validation_error("Cannot delete yourself"));
         }
 
@@ -150,7 +132,7 @@ impl UserService {
     ///
     /// # 参数
     ///
-    /// * `requester` - 请求用户的用户名
+    /// * `is_admin` - 请求用户是否为管理员
     /// * `username` - 要更新的用户名
     /// * `request` - 更新请求
     ///
@@ -159,12 +141,12 @@ impl UserService {
     /// 需要管理员权限
     pub async fn update_user(
         &self,
-        requester: &str,
+        is_admin: bool,
         username: &str,
         request: UpdateUserRequest,
     ) -> Result<(), AppError> {
         // 权限检查
-        if !self.check_admin(requester).await? {
+        if !is_admin {
             return Err(AppError::access_denied("Admin only"));
         }
 
@@ -263,7 +245,8 @@ impl UserService {
     ///
     /// # 参数
     ///
-    /// * `requester` - 请求用户的用户名
+    /// * `is_admin` - 请求用户是否为管理员
+    /// * `requester_username` - 请求用户的用户名
     /// * `target_username` - 目标用户名
     /// * `new_password` - 新密码
     ///
@@ -272,13 +255,13 @@ impl UserService {
     /// 用户可以修改自己的密码,管理员可以修改任意用户的密码
     pub async fn change_password(
         &self,
-        requester: &str,
+        is_admin: bool,
+        requester_username: &str,
         target_username: &str,
         new_password: &str,
     ) -> Result<(), AppError> {
         // 权限检查
-        let is_admin = self.check_admin(requester).await?;
-        let can_change = is_admin || requester == target_username;
+        let can_change = is_admin || requester_username == target_username;
 
         if !can_change {
             return Err(AppError::access_denied(
@@ -311,7 +294,7 @@ mod tests {
     async fn setup_test_db() -> SqlitePool {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
 
-        // 创建用户表
+        // 创建用户表(使用完整的表结构)
         sqlx::query(
             "CREATE TABLE users (
                 id TEXT PRIMARY KEY,
@@ -319,6 +302,16 @@ mod tests {
                 password TEXT NOT NULL,
                 email TEXT,
                 is_admin BOOLEAN DEFAULT 0,
+                max_bitrate INTEGER DEFAULT 320,
+                download_role INTEGER DEFAULT 1,
+                upload_role INTEGER DEFAULT 0,
+                playlist_role INTEGER DEFAULT 1,
+                cover_art_role INTEGER DEFAULT 1,
+                comment_role INTEGER DEFAULT 0,
+                podcast_role INTEGER DEFAULT 0,
+                share_role INTEGER DEFAULT 1,
+                video_conversion_role INTEGER DEFAULT 0,
+                scrobbling_enabled INTEGER DEFAULT 1,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )",
@@ -365,16 +358,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_check_admin() {
-        let pool = setup_test_db().await;
-        let service = create_service(pool);
-
-        assert!(service.check_admin("admin").await.unwrap());
-        assert!(!service.check_admin("user").await.unwrap());
-        assert!(!service.check_admin("nonexistent").await.unwrap());
-    }
-
-    #[tokio::test]
     async fn test_get_user() {
         let pool = setup_test_db().await;
         let service = create_service(pool);
@@ -392,7 +375,7 @@ mod tests {
         let pool = setup_test_db().await;
         let service = create_service(pool);
 
-        let users = service.get_all_users("admin").await.unwrap();
+        let users = service.get_all_users(true).await.unwrap();
         assert_eq!(users.len(), 2);
     }
 
@@ -401,7 +384,7 @@ mod tests {
         let pool = setup_test_db().await;
         let service = create_service(pool);
 
-        let result = service.get_all_users("user").await;
+        let result = service.get_all_users(false).await;
         assert!(result.is_err());
     }
 
@@ -411,7 +394,7 @@ mod tests {
         let service = create_service(pool.clone());
 
         // 管理员可以删除其他用户
-        let result = service.delete_user("admin", "user").await;
+        let result = service.delete_user(true, "admin", "user").await;
         assert!(result.is_ok());
 
         // 验证用户已删除
@@ -425,7 +408,7 @@ mod tests {
         let service = create_service(pool);
 
         // 不能删除自己
-        let result = service.delete_user("admin", "admin").await;
+        let result = service.delete_user(true, "admin", "admin").await;
         assert!(result.is_err());
     }
 
@@ -435,7 +418,7 @@ mod tests {
         let service = create_service(pool);
 
         // 普通用户不能删除
-        let result = service.delete_user("user", "admin").await;
+        let result = service.delete_user(false, "user", "admin").await;
         assert!(result.is_err());
     }
 }
