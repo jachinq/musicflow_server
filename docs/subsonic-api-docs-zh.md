@@ -191,6 +191,7 @@ http://你的服务器.com/rest/
 - getNowPlaying 返回正在播放的歌曲
 - getStarred 返回已收藏的项目
 - getStarred2 返回已收藏的项目（包含更多详情）
+- getSimilarSongs2 返回给定歌曲的相似歌曲
 
 ### 搜索类
 
