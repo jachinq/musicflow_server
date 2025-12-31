@@ -4,7 +4,9 @@ use std::sync::{
 };
 
 use pinyin::ToPinyin;
+use quick_xml::de;
 
+#[derive(Default)]
 pub struct Pinyin;
 
 impl Pinyin {
@@ -18,10 +20,8 @@ impl Pinyin {
         }
 
         let mut pinyin = String::new();
-        for ele in text.to_pinyin() {
-            if let Some(pin) = ele {
-                pinyin.push_str(&pin.plain());
-            }
+        for pin in text.to_pinyin().flatten() {
+            pinyin.push_str(pin.plain());
         }
 
         if pinyin.is_empty() {

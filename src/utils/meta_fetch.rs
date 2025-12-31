@@ -193,7 +193,7 @@ fn parse_multi_artist(artists: &str) -> String {
             return artists[0].trim().to_string();
         }
     }
-    return artists.to_string();
+    artists.to_string()
 }
 
 /// 返回的 data 是单个对象

@@ -348,7 +348,7 @@ impl BrowsingService {
 
 
         let suffix = if song.path.is_some() {
-             Some(image_utils::get_content_type(&Path::new(&song.path.clone().unwrap())))
+             Some(image_utils::get_content_type(Path::new(&song.path.clone().unwrap())))
         } else {
             None
         };

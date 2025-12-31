@@ -6,6 +6,8 @@
 //! 千万数量 -> 13-14
 //! 几乎无限 -> 16+
 #![allow(dead_code)]
+use std::fmt::format;
+
 use uuid::Uuid;
 
 pub fn generate_id_by_len(len: u32) -> String {
@@ -22,16 +24,22 @@ pub fn generate_id() -> String {
 }
 
 pub enum CoverArt {
-    ALBUM,
-    ARTIST,
+    Album,
+    Artist,
+}
+
+impl CoverArt {
+    pub fn get_id(&self, id: &str) -> String {
+        let prefix = match self {
+            CoverArt::Album => "al",
+            CoverArt::Artist => "ar",
+        };
+        format!("{}-{}", prefix, id)
+    }
 }
 
 pub fn gen_cover_id(c: CoverArt) -> String {
-    let prefix = match c {
-        CoverArt::ALBUM => "al",
-        CoverArt::ARTIST => "ar",
-    };
-    format!("{}-{}", prefix, generate_id())
+    c.get_id(&generate_id())
 }
 
 #[test]
@@ -46,12 +54,11 @@ fn test_generate_id() {
     println!("default id: {}", id);
     assert_eq!(id.len(), 16);
 
-    let al_id = gen_cover_id(CoverArt::ALBUM);
+    let al_id = gen_cover_id(CoverArt::Album);
     println!("album id: {}", al_id);
     assert_eq!(al_id.len(), 19);
 
-    let ar_id = gen_cover_id(CoverArt::ARTIST);
+    let ar_id = gen_cover_id(CoverArt::Artist);
     println!("artist id: {}", ar_id);
     assert_eq!(ar_id.len(), 19);
-    
 }

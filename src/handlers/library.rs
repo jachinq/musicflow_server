@@ -167,7 +167,7 @@ pub async fn scrobble(
         .time
         .unwrap_or_else(|| chrono::Utc::now().timestamp());
     let submission = params.submission.unwrap_or("True".to_string());
-    let submission = if submission == "True" { true } else { false };
+    let submission = submission == "True";
 
     // 调用 Service 层 (带事务保护)
     state
