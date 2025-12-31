@@ -38,9 +38,6 @@ impl CoverArt {
     }
 }
 
-pub fn gen_cover_id(c: CoverArt) -> String {
-    c.get_id(&generate_id())
-}
 
 #[test]
 fn test_generate_id() {
@@ -54,11 +51,11 @@ fn test_generate_id() {
     println!("default id: {}", id);
     assert_eq!(id.len(), 16);
 
-    let al_id = gen_cover_id(CoverArt::Album);
+    let al_id = CoverArt::Album.get_id(&id);
     println!("album id: {}", al_id);
     assert_eq!(al_id.len(), 19);
-
-    let ar_id = gen_cover_id(CoverArt::Artist);
+    
+    let ar_id = CoverArt::Artist.get_id(&id);
     println!("artist id: {}", ar_id);
     assert_eq!(ar_id.len(), 19);
 }
