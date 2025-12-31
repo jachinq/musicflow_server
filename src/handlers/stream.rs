@@ -165,19 +165,9 @@ pub async fn get_cover_art(
     Query(params): Query<CoverArtParams>,
 ) -> Result<impl IntoResponse, AppError> {
     let cover_art_id = &params.id;
-    // tracing::info!("get cover art for: {}", cover_art_id);
+    tracing::info!("get cover art for: {}", cover_art_id);
 
-    // 兼容这种格式 al-ce60a8a2-a40f-43ef-ad26-55051da8999f，提取出 al-ce60a8a2
-    let mut empy_id = cover_art_id.is_empty();
-    let cover_art_id = if cover_art_id.starts_with("al-") && cover_art_id.len() > 11 {
-        tracing::warn!("Cover art format need update: {}", cover_art_id);
-        empy_id = cover_art_id.trim().is_empty();
-        &format!("al-{}", cover_art_id.split('-').nth(1).unwrap_or_default()) // 取第二个元素
-    } else {
-        cover_art_id
-    };
-
-    if empy_id || cover_art_id.replace("al-", "").trim().is_empty() {
+    if cover_art_id.replace("al-", "").trim().is_empty() {
         // 返回默认数据
         tracing::warn!("Empty cover art id, return default cover art");
         return image_utils::serve_image_file(PathBuf::from("./web/default_cover.webp")).await;

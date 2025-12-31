@@ -409,7 +409,7 @@ impl ScanService {
         mime_type: &str,
         original_data: Box<[u8]>,
     ) -> Result<String, AppError> {
-        let cover_art_id = format!("al-{}", &album_id[0..8]);
+        let cover_art_id = format!("al-{}", &album_id);
         let format = get_image_format(mime_type).to_string(); // 转换为拥有的String
 
         let start = std::time::Instant::now();
