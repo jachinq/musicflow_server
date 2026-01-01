@@ -123,6 +123,19 @@ MUSIC_LIBRARY_PATH=/path/to/your/music
 RUST_LOG=info
 ```
 
+### docker 部署
+
+```bash
+# 构建 musl 静态链接库
+cargo build --release --target x86_64-unknown-linux-musl
+cp target/x86_64-unknown-linux-musl/release/musicflow_server ./docker
+
+# 构建镜像
+cd docker
+docker build -t musicflow-server .
+```
+
+
 ## 📝 API 端点状态
 
 ### P0 - 核心功能
