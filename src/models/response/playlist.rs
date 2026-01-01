@@ -18,6 +18,11 @@ pub struct PlaylistResponse {
 
 /// 播放列表详情 (包含歌曲列表)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaylistDetailWrapper {
+    pub playlist: PlaylistDetail,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PlaylistDetail {
     pub id: String,
     pub name: String,
@@ -26,12 +31,12 @@ pub struct PlaylistDetail {
     pub song_count: i32,
     pub duration: i32,
     pub entry: Vec<Song>,
+    pub allowed_user: Vec<String>,
 }
 
 /// 播放列表列表响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Playlists {
-    #[serde(rename = "playlist")]
     pub playlists: Vec<PlaylistResponse>,
 }
 
@@ -76,6 +81,12 @@ impl ToXml for Playlists {
     }
 }
 
+impl ToXml for PlaylistDetailWrapper {
+    fn to_xml_element(&self) -> String {
+        self.playlist.to_xml_element()
+    }
+}
+
 impl ToXml for PlaylistDetail {
     fn to_xml_element(&self) -> String {
         let mut xml = format!(
@@ -83,7 +94,10 @@ impl ToXml for PlaylistDetail {
             self.id, self.name, self.owner, self.public, self.song_count, self.duration
         );
         for song in &self.entry {
-            xml.push_str(&song.to_xml_element());
+            xml.push_str(&song.to_xml_element().replace("<song", "<entry"));
+        }
+        for user in &self.allowed_user {
+            xml.push_str(&format!(r#"<allowedUser>{}</allowedUser>"#, user));
         }
         xml.push_str("</playlist>");
         xml

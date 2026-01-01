@@ -23,10 +23,14 @@ pub struct CreatePlaylistRequest {
 
 /// 更新播放列表请求
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdatePlaylistRequest {
+    pub playlist_id: String,
     pub name: Option<String>,
     pub comment: Option<String>,
     pub public: Option<bool>,
+    #[serde(default)]
     pub song_id_to_add: Option<Vec<String>>,
+    #[serde(default)]
     pub song_index_to_remove: Option<Vec<i32>>,
 }

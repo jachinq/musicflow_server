@@ -7,7 +7,7 @@
 //! - 统计信息更新
 
 use crate::error::AppError;
-use crate::models::dto::{CreatePlaylistRequest, SongDto, UpdatePlaylistRequest};
+use crate::models::dto::{CreatePlaylistRequest, SongDto, UpdatePlaylistRequest, SongDetailDto};
 use crate::services::ServiceContext;
 use crate::utils::id_builder;
 use futures::FutureExt;
@@ -33,7 +33,7 @@ pub struct PlaylistDetailInfo {
     pub is_public: bool,
     pub song_count: i32,
     pub duration: i32,
-    pub songs: Vec<SongDto>,
+    pub songs: Vec<SongDetailDto>,
 }
 
 /// 播放列表管理服务
@@ -129,14 +129,21 @@ impl PlaylistService {
             .ok_or_else(|| AppError::not_found("Playlist"))?;
 
         // 获取歌曲列表
-        let songs = sqlx::query_as::<_, SongDto>(
-            "SELECT s.id, s.title, ar.name as artist, al.name as album, s.duration, s.content_type
-             FROM playlist_songs ps
-             JOIN songs s ON ps.song_id = s.id
-             JOIN albums al ON s.album_id = al.id
-             JOIN artists ar ON s.artist_id = ar.id
-             WHERE ps.playlist_id = ?
-             ORDER BY ps.position",
+        let songs = sqlx::query_as::<_, SongDetailDto>(
+            "SELECT s.id, s.title, 
+                    ar.name as artist, 
+                    s.artist_id, 
+                    al.name as album, 
+                    s.album_id, 
+                    s.track_number, s.disc_number, s.duration, s.bit_rate, s.genre,
+                    s.year, s.content_type, s.file_path as path,
+                    al.cover_art_path as cover_art, s.file_size, s.play_count
+                FROM playlist_songs ps
+                JOIN songs s ON ps.song_id = s.id
+                JOIN albums al ON s.album_id = al.id
+                JOIN artists ar ON s.artist_id = ar.id
+                WHERE ps.playlist_id = ?
+                ORDER BY ps.position",
         )
         .bind(playlist_id)
         .fetch_all(&self.ctx.pool)
@@ -227,14 +234,14 @@ impl PlaylistService {
     /// 4. 更新统计信息
     pub async fn update_playlist(
         &self,
-        playlist_id: &str,
         user_id: &str,
         request: UpdatePlaylistRequest,
     ) -> Result<(), AppError> {
         // 权限检查
-        self.check_playlist_owner(playlist_id, user_id).await?;
+        self.check_playlist_owner(&request.playlist_id, user_id)
+            .await?;
 
-        let playlist_id = playlist_id.to_string();
+        let playlist_id = request.playlist_id.to_string();
         let name = request.name.clone();
         let comment = request.comment.clone();
         let public = request.public;
@@ -644,6 +651,7 @@ mod tests {
 
         // 更新播放列表
         let update_request = UpdatePlaylistRequest {
+            playlist_id: playlist_id.clone(),
             name: Some("Updated Playlist".to_string()),
             comment: Some("Test comment".to_string()),
             public: Some(true),
@@ -651,9 +659,7 @@ mod tests {
             song_index_to_remove: None,
         };
 
-        let result = service
-            .update_playlist(&playlist_id, "user1", update_request)
-            .await;
+        let result = service.update_playlist("user1", update_request).await;
         assert!(result.is_ok());
 
         // 验证更新

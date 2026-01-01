@@ -62,7 +62,7 @@ impl From<SongDto> for Song {
             path: None,
             track_number: None,
             disc_number: None,
-            cover_art: None,
+            cover_art: dto.cover_art,
             album_id: None,
             artist_id: None,
             size: None,

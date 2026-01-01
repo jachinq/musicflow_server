@@ -86,6 +86,7 @@ pub struct ArtistDetailResponse {
     pub artist: ArtistDetail,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ArtistDetail {
     pub id: String,
     pub name: String,
