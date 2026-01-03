@@ -254,6 +254,13 @@ http://你的服务器.com/rest/
 
 ---
 
+### 书签
+
+- getPlayQueue 返回播放队列
+- savePlayQueue 保存播放队列
+
+---
+
 ### 系统
 
 - ping 测试连接性
