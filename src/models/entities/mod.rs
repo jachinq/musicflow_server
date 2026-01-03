@@ -4,6 +4,7 @@
 
 pub mod album;
 pub mod artist;
+pub mod play_queue;
 pub mod playlist;
 pub mod rating;
 pub mod scrobble;
@@ -13,6 +14,7 @@ pub mod user;
 
 pub use album::Album;
 pub use artist::Artist;
+pub use play_queue::{PlayQueue, PlayQueueSong};
 pub use playlist::Playlist;
 pub use rating::Rating;
 pub use scrobble::Scrobble;

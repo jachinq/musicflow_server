@@ -24,8 +24,8 @@ mod utils;
 use config::AppConfig;
 use database::{get_db_pool, run_migrations, DbPool};
 use services::{
-    AuthService, LibraryService, PlaylistService, ScanService, SearchService, ServiceContext,
-    UserService,
+    AuthService, LibraryService, PlayQueueService, PlaylistService, ScanService, SearchService,
+    ServiceContext, UserService,
 };
 
 #[tokio::main]
@@ -96,6 +96,7 @@ fn build_app(pool: DbPool, config: AppConfig) -> Router {
     let playlist_service = Arc::new(PlaylistService::new(service_ctx.clone()));
     let browsing_service = Arc::new(BrowsingService::new(service_ctx.clone()));
     let search_service = Arc::new(SearchService::new(service_ctx.clone()));
+    let play_queue_service = Arc::new(PlayQueueService::new(service_ctx.clone()));
 
     // 创建共享状态
     let _auth_state = auth_service.clone();
@@ -117,6 +118,10 @@ fn build_app(pool: DbPool, config: AppConfig) -> Router {
     let user_routes = handlers::user::routes().with_state(user_service);
     let library_routes = handlers::library::routes(pool.clone(), scan_service, library_service);
     let advanced_routes = handlers::advanced::routes().with_state(pool.clone());
+    let play_queue_state = handlers::play_queue::PlayQueueState {
+        play_queue_service,
+    };
+    let play_queue_routes = handlers::play_queue::routes(play_queue_state);
 
     // 需要认证的 API 路由
     let protected_routes = Router::new()
@@ -124,6 +129,7 @@ fn build_app(pool: DbPool, config: AppConfig) -> Router {
         .merge(search_routes)
         .merge(stream_routes)
         .merge(playlist_routes)
+        .merge(play_queue_routes)
         .merge(user_routes)
         .merge(library_routes)
         .merge(advanced_routes)

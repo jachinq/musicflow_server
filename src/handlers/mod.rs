@@ -2,6 +2,7 @@ pub mod advanced;
 pub mod auth;
 pub mod browsing;
 pub mod library;
+pub mod play_queue;
 pub mod playlist;
 pub mod search;
 pub mod stream;
