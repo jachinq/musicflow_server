@@ -17,3 +17,12 @@ pub struct ArtistDetailDto {
     pub name: String,
     pub cover_art_path: Option<String>,
 }
+
+/// 艺术家收藏信息 DTO (用于 getStarred2，包含专辑数量)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ArtistStarredDto {
+    pub id: String,
+    pub name: String,
+    pub cover_art_path: Option<String>,
+    pub album_count: i32,
+}

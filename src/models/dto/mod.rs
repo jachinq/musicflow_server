@@ -13,6 +13,7 @@ pub mod user;
 
 pub use album::*;
 pub use artist::*;
+pub use artist::ArtistStarredDto;
 pub use playlist::*;
 pub use rating::*;
 pub use scrobble::*;

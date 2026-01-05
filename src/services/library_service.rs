@@ -7,7 +7,7 @@
 //! - 评分
 
 use crate::error::AppError;
-use crate::models::dto::{AlbumDto, ArtistDto, SongDto};
+use crate::models::dto::{AlbumDetailDto, AlbumDto, ArtistDto, ArtistStarredDto, SongDto};
 use crate::services::ServiceContext;
 use crate::utils::id_builder;
 use futures::FutureExt;
@@ -26,6 +26,14 @@ pub enum StarItemType {
 pub struct StarredItems {
     pub artists: Vec<ArtistDto>,
     pub albums: Vec<AlbumDto>,
+    pub songs: Vec<SongDto>,
+}
+
+/// 收藏数据集合（详细信息）- 用于 getStarred2
+#[derive(Debug)]
+pub struct StarredItemsDetail {
+    pub artists: Vec<ArtistStarredDto>,
+    pub albums: Vec<AlbumDetailDto>,
     pub songs: Vec<SongDto>,
 }
 
@@ -282,6 +290,32 @@ impl LibraryService {
         })
     }
 
+    /// 获取用户收藏的所有项目（包含详细信息）- 用于 getStarred2
+    ///
+    /// # 参数
+    ///
+    /// * `user_id` - 用户 ID
+    ///
+    /// # 性能优化
+    ///
+    /// 使用 tokio::try_join! 并行查询三个表,提升性能
+    pub async fn get_starred_items_with_details(&self, user_id: &str) -> Result<StarredItemsDetail, AppError> {
+        let user_id = user_id.to_string();
+
+        // 并行查询三个表
+        let (artists, albums, songs) = tokio::try_join!(
+            self.get_starred_artists_with_details(&user_id),
+            self.get_starred_albums_with_details(&user_id),
+            self.get_starred_songs(&user_id),  // 歌曲已包含 duration
+        )?;
+
+        Ok(StarredItemsDetail {
+            artists,
+            albums,
+            songs,
+        })
+    }
+
     /// 获取收藏的艺术家 (私有方法)
     async fn get_starred_artists(&self, user_id: &str) -> Result<Vec<ArtistDto>, AppError> {
         let artists = sqlx::query_as::<_, ArtistDto>(
@@ -316,7 +350,7 @@ impl LibraryService {
     /// 获取收藏的歌曲 (私有方法)
     async fn get_starred_songs(&self, user_id: &str) -> Result<Vec<SongDto>, AppError> {
         let songs = sqlx::query_as::<_, SongDto>(
-            "SELECT s.id, s.title, ar.name as artist, al.name as album, s.duration, s.content_type
+            "SELECT s.id, s.title, ar.name as artist, al.name as album, s.duration, s.content_type, NULL as cover_art
              FROM starred st
              JOIN songs s ON st.song_id = s.id
              JOIN albums al ON s.album_id = al.id
@@ -328,6 +362,40 @@ impl LibraryService {
         .await?;
 
         Ok(songs)
+    }
+
+    /// 获取收藏的艺术家（包含详细信息）- 用于 getStarred2
+    async fn get_starred_artists_with_details(&self, user_id: &str) -> Result<Vec<ArtistStarredDto>, AppError> {
+        let artists = sqlx::query_as::<_, ArtistStarredDto>(
+            "SELECT a.id, a.name, a.cover_art_path,
+                    (SELECT COUNT(*) FROM albums WHERE artist_id = a.id) as album_count
+             FROM starred s
+             JOIN artists a ON s.artist_id = a.id
+             WHERE s.user_id = ? AND s.artist_id IS NOT NULL",
+        )
+        .bind(user_id)
+        .fetch_all(&self.ctx.pool)
+        .await?;
+
+        Ok(artists)
+    }
+
+    /// 获取收藏的专辑（包含详细信息）- 用于 getStarred2
+    async fn get_starred_albums_with_details(&self, user_id: &str) -> Result<Vec<AlbumDetailDto>, AppError> {
+        let albums = sqlx::query_as::<_, AlbumDetailDto>(
+            "SELECT a.id, a.name, ar.name as artist, a.artist_id,
+                    a.year, a.genre, a.cover_art_path,
+                    a.song_count, a.duration, a.play_count
+             FROM starred s
+             JOIN albums a ON s.album_id = a.id
+             JOIN artists ar ON a.artist_id = ar.id
+             WHERE s.user_id = ? AND s.album_id IS NOT NULL",
+        )
+        .bind(user_id)
+        .fetch_all(&self.ctx.pool)
+        .await?;
+
+        Ok(albums)
     }
 
     /// 获取音乐库中的歌曲总数

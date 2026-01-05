@@ -324,6 +324,39 @@ pub async fn get_starred(
     Ok(ApiResponse::ok(Some(result), format))
 }
 
+/// GET /rest/getStarred2
+pub async fn get_starred2(
+    claims: crate::middleware::auth_middleware::Claims,
+    axum::extract::State(state): axum::extract::State<LibraryState>,
+    _params: Query<ScanParams>,
+    Format(format): Format,
+) -> Result<ApiResponse<StarredResponse>, AppError> {
+    let user_id = &claims.sub;
+
+    // 调用 Service 层 (并行查询三个表，返回详细信息)
+    let starred_items = state.library_service.get_starred_items_with_details(user_id).await?;
+
+    let result = StarredResponse {
+        artist: if starred_items.artists.is_empty() {
+            None
+        } else {
+            Some(ArtistResponse::from_starred_dtos(starred_items.artists))
+        },
+        album: if starred_items.albums.is_empty() {
+            None
+        } else {
+            Some(AlbumResponse::from_dto_details(starred_items.albums))
+        },
+        song: if starred_items.songs.is_empty() {
+            None
+        } else {
+            Some(Song::from_dtos(starred_items.songs))
+        },
+    };
+
+    Ok(ApiResponse::ok(Some(result), format))
+}
+
 pub fn routes(
     pool: Arc<sqlx::SqlitePool>,
     scan_service: Arc<ScanService>,
@@ -351,5 +384,6 @@ pub fn routes(
         .route("/rest/setRating", get(set_rating))
         .route("/rest/getRating", get(get_rating))
         .route("/rest/getStarred", get(get_starred))
+        .route("/rest/getStarred2", get(get_starred2))
         .with_state(library_state)
 }

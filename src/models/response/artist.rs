@@ -67,6 +67,17 @@ impl From<ArtistDetailDto> for ArtistResponse {
     }
 }
 
+impl From<crate::models::dto::ArtistStarredDto> for ArtistResponse {
+    fn from(dto: crate::models::dto::ArtistStarredDto) -> Self {
+        Self {
+            id: dto.id.clone(),
+            name: dto.name,
+            cover_art: Some(format!("ar-{}", dto.id)),
+            album_count: Some(dto.album_count),
+        }
+    }
+}
+
 impl ArtistResponse {
     pub fn from_entities(entities: Vec<Artist>) -> Vec<Self> {
         entities.into_iter().map(Self::from).collect()
@@ -76,6 +87,10 @@ impl ArtistResponse {
     }
 
     pub fn from_detail_dtos(dtos: Vec<ArtistDetailDto>) -> Vec<Self> {
+        dtos.into_iter().map(Self::from).collect()
+    }
+
+    pub fn from_starred_dtos(dtos: Vec<crate::models::dto::ArtistStarredDto>) -> Vec<Self> {
         dtos.into_iter().map(Self::from).collect()
     }
 }
