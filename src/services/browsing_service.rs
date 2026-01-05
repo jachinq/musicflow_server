@@ -82,6 +82,14 @@ impl AlbumListType {
     }
 }
 
+/// ID 类型枚举
+#[derive(Debug, Clone)]
+enum IdType {
+    Song(String),
+    Album(String),
+    Artist(String),
+}
+
 /// 浏览功能服务
 pub struct BrowsingService {
     ctx: Arc<ServiceContext>,
@@ -92,6 +100,41 @@ impl BrowsingService {
     pub fn new(ctx: Arc<ServiceContext>) -> Self {
         Self { ctx }
     }
+
+    /// 通过查询数据库判断 ID 类型
+    ///
+    /// # 参数
+    ///
+    /// * `id` - 要检测的 ID
+    ///
+    /// # 返回
+    ///
+    /// 返回 ID 对应的类型 (Song/Album/Artist)
+    ///
+    /// # 优化
+    ///
+    /// 使用单次查询同时检测三个表，避免多次数据库往返
+    async fn detect_id_type(&self, id: &str) -> Result<IdType, AppError> {
+        let result = sqlx::query_as::<_, (Option<i32>, Option<i32>, Option<i32>)>(
+            "SELECT
+                (SELECT 1 FROM songs WHERE id = ?) as is_song,
+                (SELECT 1 FROM albums WHERE id = ?) as is_album,
+                (SELECT 1 FROM artists WHERE id = ?) as is_artist"
+        )
+        .bind(id)
+        .bind(id)
+        .bind(id)
+        .fetch_one(&self.ctx.pool)
+        .await?;
+
+        match result {
+            (Some(_), _, _) => Ok(IdType::Song(id.to_string())),
+            (_, Some(_), _) => Ok(IdType::Album(id.to_string())),
+            (_, _, Some(_)) => Ok(IdType::Artist(id.to_string())),
+            _ => Err(AppError::not_found("Song/Album/Artist")),
+        }
+    }
+
 
     /// 获取专辑列表 (统一查询接口)
     ///
@@ -374,7 +417,46 @@ impl BrowsingService {
         Ok(complex_song)
     }
 
-    /// 获取相似歌曲 (基于元数据)
+    /// 获取相似歌曲 (统一入口)
+    ///
+    /// # 参数
+    ///
+    /// * `id` - 歌曲/专辑/艺术家 ID
+    /// * `count` - 返回数量
+    ///
+    /// # 功能
+    ///
+    /// 自动识别 ID 类型并调用对应的相似推荐逻辑:
+    /// - 歌曲 ID: 基于元数据计算相似度
+    /// - 专辑 ID: 返回专辑歌曲 + 同艺术家/流派歌曲
+    /// - 艺术家 ID: 返回热门歌曲 + 同流派艺术家歌曲
+    ///
+    /// # 性能
+    ///
+    /// 使用单次查询同时检测三个表，避免多次数据库往返
+    pub async fn get_similar_songs(
+        &self,
+        id: &str,
+        count: i32,
+    ) -> Result<Vec<SongDetailDto>, AppError> {
+        // 检测 ID 类型
+        let id_type = self.detect_id_type(id).await?;
+
+        // 根据类型调用不同的逻辑
+        match id_type {
+            IdType::Song(song_id) => {
+                self.get_similar_songs_by_song(&song_id, count).await
+            }
+            IdType::Album(album_id) => {
+                self.get_similar_songs_by_album(&album_id, count).await
+            }
+            IdType::Artist(artist_id) => {
+                self.get_similar_songs_by_artist(&artist_id, count).await
+            }
+        }
+    }
+
+    /// 基于歌曲的相似推荐
     ///
     /// # 参数
     ///
@@ -390,7 +472,7 @@ impl BrowsingService {
     /// - 同专辑: 3 分 (权重较低,避免推荐过多同专辑歌曲)
     ///
     /// 最终结果按分数降序排列,并添加随机性保证多样性
-    pub async fn get_similar_songs(
+    async fn get_similar_songs_by_song(
         &self,
         song_id: &str,
         count: i32,
@@ -436,6 +518,165 @@ impl BrowsingService {
 
         Ok(songs)
     }
+
+    /// 基于专辑的相似推荐
+    ///
+    /// # 参数
+    ///
+    /// * `album_id` - 专辑 ID
+    /// * `count` - 返回数量
+    ///
+    /// # 策略
+    ///
+    /// - 该专辑的歌曲（30%）
+    /// - 同艺术家其他专辑的歌曲（40%）
+    /// - 同流派/年代相近的歌曲（30%）
+    async fn get_similar_songs_by_album(
+        &self,
+        album_id: &str,
+        count: i32,
+    ) -> Result<Vec<SongDetailDto>, AppError> {
+        // 获取专辑信息
+        let album = sqlx::query_as::<_, AlbumDetailDto>(
+            "SELECT a.id, a.name, ar.name as artist, a.artist_id, a.year, a.genre,
+                    a.cover_art_path, a.song_count, a.duration, a.play_count
+             FROM albums a
+             JOIN artists ar ON a.artist_id = ar.id
+             WHERE a.id = ?"
+        )
+        .bind(album_id)
+        .fetch_optional(&self.ctx.pool)
+        .await?
+        .ok_or_else(|| AppError::not_found("Album"))?;
+
+        // 计算各部分数量
+        let album_songs_count = (count as f32 * 0.3).ceil() as i32;
+        let artist_songs_count = (count as f32 * 0.4).ceil() as i32;
+        let genre_songs_count = count - album_songs_count - artist_songs_count;
+
+        // 构建联合查询
+        let query = format!(
+            "SELECT * FROM (
+                -- 该专辑的歌曲
+                {}
+                WHERE s.album_id = ?
+                ORDER BY s.track_number ASC
+                LIMIT ?
+            )
+            UNION ALL
+            SELECT * FROM (
+                -- 同艺术家其他专辑的歌曲
+                {}
+                WHERE s.artist_id = ? AND s.album_id != ?
+                ORDER BY s.play_count DESC, RANDOM()
+                LIMIT ?
+            )
+            UNION ALL
+            SELECT * FROM (
+                -- 同流派/年代的歌曲
+                {}
+                WHERE s.album_id != ?
+                AND (al.genre = ? OR (al.year IS NOT NULL AND ? IS NOT NULL AND abs(al.year - ?) <= 2))
+                ORDER BY s.play_count DESC, RANDOM()
+                LIMIT ?
+            )
+            LIMIT ?",
+            sql_utils::detail_sql(),
+            sql_utils::detail_sql(),
+            sql_utils::detail_sql()
+        );
+
+        let songs = sqlx::query_as::<_, SongDetailDto>(&query)
+            .bind(album_id)
+            .bind(album_songs_count)
+            .bind(&album.artist_id)
+            .bind(album_id)
+            .bind(artist_songs_count)
+            .bind(album_id)
+            .bind(&album.genre)
+            .bind(&album.year)
+            .bind(&album.year)
+            .bind(genre_songs_count)
+            .bind(count)
+            .fetch_all(&self.ctx.pool)
+            .await?;
+
+        Ok(songs)
+    }
+
+    /// 基于艺术家的相似推荐
+    ///
+    /// # 参数
+    ///
+    /// * `artist_id` - 艺术家 ID
+    /// * `count` - 返回数量
+    ///
+    /// # 策略
+    ///
+    /// - 该艺术家的热门歌曲（60%）
+    /// - 同流派其他艺术家的歌曲（40%）
+    async fn get_similar_songs_by_artist(
+        &self,
+        artist_id: &str,
+        count: i32,
+    ) -> Result<Vec<SongDetailDto>, AppError> {
+        // 验证艺术家是否存在
+        let _artist_exists = sqlx::query_scalar::<_, i32>(
+            "SELECT 1 FROM artists WHERE id = ? LIMIT 1"
+        )
+        .bind(artist_id)
+        .fetch_optional(&self.ctx.pool)
+        .await?
+        .ok_or_else(|| AppError::not_found("Artist"))?;
+
+        // 获取该艺术家的主要流派
+        let main_genre = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT genre FROM albums WHERE artist_id = ? AND genre IS NOT NULL
+             GROUP BY genre ORDER BY COUNT(*) DESC LIMIT 1"
+        )
+        .bind(artist_id)
+        .fetch_optional(&self.ctx.pool)
+        .await?
+        .flatten();
+
+        // 计算各部分数量
+        let artist_songs_count = (count as f32 * 0.6).ceil() as i32;
+        let genre_songs_count = count - artist_songs_count;
+
+        // 构建联合查询
+        let query = format!(
+            "SELECT * FROM (
+                -- 该艺术家的热门歌曲
+                {}
+                WHERE s.artist_id = ?
+                ORDER BY s.play_count DESC, RANDOM()
+                LIMIT ?
+            )
+            UNION ALL
+            SELECT * FROM (
+                -- 同流派其他艺术家的歌曲
+                {}
+                WHERE s.artist_id != ? AND al.genre = ?
+                ORDER BY s.play_count DESC, RANDOM()
+                LIMIT ?
+            )
+            LIMIT ?",
+            sql_utils::detail_sql(),
+            sql_utils::detail_sql()
+        );
+
+        let songs = sqlx::query_as::<_, SongDetailDto>(&query)
+            .bind(artist_id)
+            .bind(artist_songs_count)
+            .bind(artist_id)
+            .bind(&main_genre)
+            .bind(genre_songs_count)
+            .bind(count)
+            .fetch_all(&self.ctx.pool)
+            .await?;
+
+        Ok(songs)
+    }
 }
 
 #[cfg(test)]
@@ -450,7 +691,8 @@ mod tests {
         sqlx::query(
             "CREATE TABLE artists (
                 id TEXT PRIMARY KEY,
-                name TEXT NOT NULL
+                name TEXT NOT NULL,
+                cover_art_path TEXT
             )",
         )
         .execute(&pool)
@@ -484,14 +726,27 @@ mod tests {
                 album_id TEXT NOT NULL,
                 duration INTEGER DEFAULT 0,
                 bit_rate INTEGER,
-                track INTEGER,
+                track_number INTEGER,
                 disc_number INTEGER,
-                size INTEGER,
-                suffix TEXT,
+                year INTEGER,
+                genre TEXT,
+                file_path TEXT,
+                file_size INTEGER,
                 content_type TEXT,
-                path TEXT,
-                play_count INTEGER DEFAULT 0,
-                genre TEXT
+                play_count INTEGER DEFAULT 0
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "CREATE TABLE ratings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                song_id TEXT NOT NULL,
+                rating INTEGER NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )",
         )
         .execute(&pool)
@@ -505,23 +760,23 @@ mod tests {
             .unwrap();
 
         sqlx::query(
-            "INSERT INTO albums (id, name, artist_id, year, genre, song_count, duration, play_count)
-             VALUES ('album1', 'Test Album', 'artist1', 2020, 'Rock', 2, 300, 100)",
+            "INSERT INTO albums (id, name, artist_id, year, genre, song_count, duration, play_count, created_at)
+             VALUES ('album1', 'Test Album', 'artist1', 2020, 'Rock', 2, 300, 100, '2020-01-01 00:00:00')",
         )
         .execute(&pool)
         .await
         .unwrap();
 
         sqlx::query(
-            "INSERT INTO albums (id, name, artist_id, year, genre, song_count, duration, play_count)
-             VALUES ('album2', 'Another Album', 'artist1', 2021, 'Pop', 1, 200, 50)",
+            "INSERT INTO albums (id, name, artist_id, year, genre, song_count, duration, play_count, created_at)
+             VALUES ('album2', 'Another Album', 'artist1', 2021, 'Pop', 1, 200, 50, '2021-01-01 00:00:00')",
         )
         .execute(&pool)
         .await
         .unwrap();
 
         sqlx::query(
-            "INSERT INTO songs (id, title, artist_id, album_id, duration, track, genre, play_count)
+            "INSERT INTO songs (id, title, artist_id, album_id, duration, track_number, genre, play_count)
              VALUES ('song1', 'Song 1', 'artist1', 'album1', 180, 1, 'Rock', 50)",
         )
         .execute(&pool)
@@ -529,7 +784,7 @@ mod tests {
         .unwrap();
 
         sqlx::query(
-            "INSERT INTO songs (id, title, artist_id, album_id, duration, track, genre, play_count)
+            "INSERT INTO songs (id, title, artist_id, album_id, duration, track_number, genre, play_count)
              VALUES ('song2', 'Song 2', 'artist1', 'album1', 120, 2, 'Rock', 30)",
         )
         .execute(&pool)
@@ -651,5 +906,75 @@ mod tests {
         assert!(genres.len() >= 1);
         // 应该有 Rock 流派
         // assert!(genres.iter().any(|g| g.name == "Rock"));
+    }
+
+    #[tokio::test]
+    async fn test_detect_id_type_song() {
+        let pool = setup_test_db().await;
+        let service = create_service(pool);
+
+        let id_type = service.detect_id_type("song1").await.unwrap();
+        assert!(matches!(id_type, IdType::Song(_)));
+    }
+
+    #[tokio::test]
+    async fn test_detect_id_type_album() {
+        let pool = setup_test_db().await;
+        let service = create_service(pool);
+
+        let id_type = service.detect_id_type("album1").await.unwrap();
+        assert!(matches!(id_type, IdType::Album(_)));
+    }
+
+    #[tokio::test]
+    async fn test_detect_id_type_artist() {
+        let pool = setup_test_db().await;
+        let service = create_service(pool);
+
+        let id_type = service.detect_id_type("artist1").await.unwrap();
+        assert!(matches!(id_type, IdType::Artist(_)));
+    }
+
+    #[tokio::test]
+    async fn test_detect_id_type_not_found() {
+        let pool = setup_test_db().await;
+        let service = create_service(pool);
+
+        let result = service.detect_id_type("nonexistent").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_similar_songs_by_song() {
+        let pool = setup_test_db().await;
+        let service = create_service(pool);
+
+        let songs = service.get_similar_songs("song1", 10).await.unwrap();
+        // 应该至少有一些相似歌曲 (同专辑的 song2)
+        assert!(songs.len() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_similar_songs_by_album() {
+        let pool = setup_test_db().await;
+        let service = create_service(pool);
+
+        let songs = service.get_similar_songs("album1", 10).await.unwrap();
+        // 应该包含该专辑的歌曲
+        assert!(songs.len() > 0);
+        // 应该包含专辑的歌曲
+        assert!(songs.iter().any(|s| s.album_id == "album1"));
+    }
+
+    #[tokio::test]
+    async fn test_get_similar_songs_by_artist() {
+        let pool = setup_test_db().await;
+        let service = create_service(pool);
+
+        let songs = service.get_similar_songs("artist1", 10).await.unwrap();
+        // 应该包含该艺术家的歌曲
+        assert!(songs.len() > 0);
+        // 所有歌曲应该来自该艺术家或相似流派
+        assert!(songs.iter().any(|s| s.artist_id == "artist1"));
     }
 }

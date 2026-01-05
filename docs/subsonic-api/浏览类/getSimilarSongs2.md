@@ -1,4 +1,4 @@
-# getRandomSongs
+# getRandomSongs2
 
 返回给定艺术家及相似艺术家的随机歌曲集合，使用来自 last.fm 的数据。通常用于艺术家广播功能。
 
