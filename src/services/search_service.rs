@@ -7,9 +7,10 @@
 #![allow(dead_code)]
 
 use crate::error::AppError;
-use crate::models::dto::{AlbumDetailDto, AlbumDto, ArtistDto, SongDetailDto};
+use crate::models::dto::{AlbumDetailDto, AlbumDto, ArtistDto, ComplexSongDto, SongDetailDto};
 use crate::services::ServiceContext;
-use crate::utils::sql_utils;
+use crate::utils::{image_utils, sql_utils};
+use std::path::Path;
 use std::sync::Arc;
 
 /// 搜索结果
@@ -17,7 +18,7 @@ use std::sync::Arc;
 pub struct SearchResults {
     pub artists: Vec<ArtistDto>,
     pub albums: Vec<AlbumDetailDto>,
-    pub songs: Vec<SongDetailDto>,
+    pub songs: Vec<ComplexSongDto>,
 }
 
 /// 搜索结果 (简化版,用于 search2)
@@ -25,7 +26,7 @@ pub struct SearchResults {
 pub struct SearchResults2 {
     pub artists: Vec<ArtistDto>,
     pub albums: Vec<AlbumDto>,
-    pub songs: Vec<SongDetailDto>,
+    pub songs: Vec<ComplexSongDto>,
 }
 
 /// 搜索参数
@@ -74,14 +75,14 @@ impl SearchService {
     /// # 性能优化
     ///
     /// 使用 tokio::try_join! 并行执行三个独立查询,提升性能
-    pub async fn search_all(&self, params: SearchParams) -> Result<SearchResults, AppError> {
+    pub async fn search_all(&self, user_id: &str, params: SearchParams) -> Result<SearchResults, AppError> {
         let query = params.query.clone();
 
         // 并行搜索三个表
         let (artists, albums, songs) = tokio::try_join!(
             self.search_artists(&query, params.artist_count, params.artist_offset),
             self.search_albums_detailed(&query, params.album_count, params.album_offset),
-            self.search_songs(&query, params.song_count, params.song_offset),
+            self.search_songs(user_id, &query, params.song_count, params.song_offset),
         )?;
 
         Ok(SearchResults {
@@ -102,6 +103,7 @@ impl SearchService {
     /// 与 search_all 相同使用并行查询,但返回简化的专辑信息
     pub async fn search_all_simple(
         &self,
+        user_id: &str,
         params: SearchParams,
     ) -> Result<SearchResults2, AppError> {
         let query = params.query.clone();
@@ -110,7 +112,7 @@ impl SearchService {
         let (artists, albums, songs) = tokio::try_join!(
             self.search_artists(&query, params.artist_count, params.artist_offset),
             self.search_albums_simple(&query, params.album_count, params.album_offset),
-            self.search_songs(&query, params.song_count, params.song_offset),
+            self.search_songs(user_id, &query, params.song_count, params.song_offset),
         )?;
 
         Ok(SearchResults2 {
@@ -220,10 +222,11 @@ impl SearchService {
     /// * `offset` - 偏移量
     async fn search_songs(
         &self,
+        user_id: &str,
         query: &str,
         count: i32,
         offset: i32,
-    ) -> Result<Vec<SongDetailDto>, AppError> {
+    ) -> Result<Vec<ComplexSongDto>, AppError> {
         let songs = sqlx::query_as::<_, SongDetailDto>(&format!(
             "{} WHERE s.title LIKE ? OR al.name LIKE ? OR ar.name LIKE ?
              ORDER BY s.title
@@ -238,14 +241,56 @@ impl SearchService {
         .fetch_all(&self.ctx.pool)
         .await?;
 
+        let rating = sqlx::query_as::<_, (i32, String)>(
+            "SELECT rating,song_id FROM ratings WHERE user_id = ? AND song_id != ''",
+        )
+        .bind(&user_id)
+        .fetch_all(&self.ctx.pool)
+        .await?;
+
+        let starred = sqlx::query_as::<_, (String, String)>(
+            "SELECT id,song_id FROM starred WHERE user_id = ? AND song_id != ''",
+        )
+        .bind(&user_id)
+        .fetch_all(&self.ctx.pool)
+        .await?;
+
+        let complex_songs = songs
+            .into_iter()
+            .map(|song| {
+                let suffix = if song.path.is_some() {
+                    Some(image_utils::get_content_type(Path::new(
+                        &song.path.clone().unwrap(),
+                    )))
+                } else {
+                    None
+                };
+
+                let r = rating
+                    .iter()
+                    .find_map(|r| if r.1.eq(&song.id) { Some(r.0) } else { None });
+
+                let starred = starred
+                        .iter()
+                        .find_map(|s| if s.1.eq(&song.id) { Some(true) } else { None });
+
+                ComplexSongDto {
+                    song,
+                    user_rating: r,
+                    starred,
+                    suffix,
+                }
+            })
+            .collect::<Vec<_>>();
+
         tracing::info!(
             "limit {}, offset {}, query={} len={}",
             count,
             offset,
             query,
-            songs.len()
+            complex_songs.len()
         );
-        Ok(songs)
+        Ok(complex_songs)
     }
 }
 
@@ -363,9 +408,9 @@ mod tests {
         let pool = setup_test_db().await;
         let service = create_service(pool);
 
-        let songs = service.search_songs("Test", 10, 0).await.unwrap();
+        let songs = service.search_songs("", "Test", 10, 0).await.unwrap();
         assert_eq!(songs.len(), 1);
-        assert_eq!(songs[0].title, "Test Song");
+        assert_eq!(songs[0].song.title, "Test Song");
     }
 
     #[tokio::test]
@@ -378,7 +423,7 @@ mod tests {
             ..Default::default()
         };
 
-        let results = service.search_all(params).await.unwrap();
+        let results = service.search_all("", params).await.unwrap();
 
         assert_eq!(results.artists.len(), 1);
         assert_eq!(results.albums.len(), 1);
@@ -395,7 +440,7 @@ mod tests {
             ..Default::default()
         };
 
-        let results = service.search_all_simple(params).await.unwrap();
+        let results = service.search_all_simple("", params).await.unwrap();
 
         assert_eq!(results.artists.len(), 1);
         assert_eq!(results.albums.len(), 1);

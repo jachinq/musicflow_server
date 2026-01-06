@@ -45,6 +45,7 @@ pub async fn search3(
     axum::extract::State(state): axum::extract::State<Arc<SearchService>>,
     Query(params): Query<Search3Params>,
     Format(format): Format,
+    claims: crate::middleware::auth_middleware::Claims,
 ) -> Result<ApiResponse<SearchResult3Response>, AppError> {
     let artist_count = params.artist_count.unwrap_or(20);
     let artist_offset = params.artist_offset.unwrap_or(0);
@@ -69,7 +70,7 @@ pub async fn search3(
         song_offset,
     };
 
-    let result = state.search_all(params).await?;
+    let result = state.search_all(&claims.sub, params).await?;
 
     let result = SearchResult3Response {
         search_result3: SearchResult3 {
@@ -87,6 +88,7 @@ pub async fn search2(
     axum::extract::State(state): axum::extract::State<Arc<SearchService>>,
     Query(params): Query<Search2Params>,
     Format(format): Format,
+    claims: crate::middleware::auth_middleware::Claims,
 ) -> Result<ApiResponse<SearchResult2Response>, AppError> {
     let artist_count = params.artist_count.unwrap_or(20);
     let artist_offset = params.artist_offset.unwrap_or(0);
@@ -105,7 +107,7 @@ pub async fn search2(
         song_offset,
     };
 
-    let result = state.search_all_simple(params).await?;
+    let result = state.search_all_simple(&claims.sub, params).await?;
 
     let result = SearchResult2Response {
         search_result2: SearchResult2 {

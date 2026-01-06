@@ -5,6 +5,7 @@ use axum::body::Body;
 use axum::{extract::Query, http::HeaderMap, response::IntoResponse, routing::get, Router};
 use serde::Deserialize;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
@@ -13,7 +14,7 @@ use crate::extractors::Format;
 use crate::middleware::auth_middleware;
 use crate::models::response::{Lyrics, LyricsResponse};
 use crate::response::ApiResponse;
-use crate::services::song_service::CommState;
+use crate::services::ServiceContext;
 use crate::utils::{image_utils, MetaClient};
 
 /// 流媒体参数
@@ -58,7 +59,7 @@ pub struct CoverArtParams {
 
 /// GET /rest/stream - 流式播放音乐
 pub async fn stream(
-    axum::extract::State(state): axum::extract::State<CommState>,
+    axum::extract::State(state): axum::extract::State<StreamState>,
     Query(params): Query<StreamParams>,
 ) -> Result<impl IntoResponse, AppError> {
     // 根据ID查询歌曲信息
@@ -66,7 +67,7 @@ pub async fn stream(
         "SELECT file_path, content_type FROM songs WHERE id = ?",
     )
     .bind(&params.id)
-    .fetch_optional(&*state.pool)
+    .fetch_optional(&state.ctx.pool)
     .await?;
 
     let (file_path_str, content_type) = song.ok_or_else(|| AppError::not_found("Song"))?;
@@ -107,11 +108,11 @@ pub async fn stream(
 /// GET /rest/download - 下载音乐文件
 pub async fn download(
     claims: auth_middleware::Claims,
-    axum::extract::State(state): axum::extract::State<CommState>,
+    axum::extract::State(state): axum::extract::State<StreamState>,
     Query(params): Query<DownloadParams>,
 ) -> Result<impl IntoResponse, AppError> {
     // 检查下载权限
-    let permissions = auth_middleware::get_user_permissions(&state.pool, &claims.sub)
+    let permissions = auth_middleware::get_user_permissions(&state.ctx.pool, &claims.sub)
         .await
         .map_err(|_| AppError::access_denied("Failed to check permissions"))?;
 
@@ -123,7 +124,7 @@ pub async fn download(
     let song =
         sqlx::query_as::<_, (String, String)>("SELECT file_path, title FROM songs WHERE id = ?")
             .bind(&params.id)
-            .fetch_optional(&*state.pool)
+            .fetch_optional(&state.ctx.pool)
             .await?;
 
     let (file_path_str, title) = song.ok_or_else(|| AppError::not_found("Song"))?;
@@ -157,7 +158,7 @@ pub async fn download(
 
 /// GET /rest/getCoverArt - 获取封面图片
 pub async fn get_cover_art(
-    axum::extract::State(state): axum::extract::State<CommState>,
+    axum::extract::State(state): axum::extract::State<StreamState>,
     Query(params): Query<CoverArtParams>,
 ) -> Result<impl IntoResponse, AppError> {
     let cover_art_id = &params.id;
@@ -186,13 +187,13 @@ pub async fn get_cover_art(
             let album_name = if cover_art_id.starts_with("al-") {
                 sqlx::query_as::<_, (String,)>("SELECT name FROM albums WHERE id = ?")
                     .bind(cover_art_id.replace("al-", ""))
-                    .fetch_optional(&*state.pool)
+                    .fetch_optional(&state.ctx.pool)
                     .await?
                     .map(|(name,)| name)
             } else if cover_art_id.starts_with("ar-") {
                 sqlx::query_as::<_, (String,)>("SELECT name FROM artists WHERE id = ?")
                     .bind(cover_art_id.replace("ar-", ""))
-                    .fetch_optional(&*state.pool)
+                    .fetch_optional(&state.ctx.pool)
                     .await?
                     .map(|(name,)| name)
             } else {
@@ -268,7 +269,7 @@ pub struct LyricsParams {
 /// GET /rest/getLyrics - 获取歌词
 pub async fn get_lyrics(
     Format(format): Format,
-    axum::extract::State(state): axum::extract::State<CommState>,
+    axum::extract::State(state): axum::extract::State<StreamState>,
     Query(params): Query<LyricsParams>,
 ) -> Result<ApiResponse<LyricsResponse>, AppError> {
     // 构建查询条件
@@ -284,7 +285,7 @@ pub async fn get_lyrics(
         )
         .bind(format!("%{}%", title))
         .bind(format!("%{}%", artist))
-        .fetch_optional(&*state.pool)
+        .fetch_optional(&state.ctx.pool)
         .await?
     } else if let Some(title) = params.title.as_ref() {
         // 只有标题
@@ -295,7 +296,7 @@ pub async fn get_lyrics(
              LIMIT 1",
         )
         .bind(format!("%{}%", title))
-        .fetch_optional(&*state.pool)
+        .fetch_optional(&state.ctx.pool)
         .await?
     } else if let Some(artist) = params.artist.as_ref() {
         // 只有艺术家
@@ -307,7 +308,7 @@ pub async fn get_lyrics(
              LIMIT 1",
         )
         .bind(format!("%{}%", artist))
-        .fetch_optional(&*state.pool)
+        .fetch_optional(&state.ctx.pool)
         .await?
     } else {
         None
@@ -317,7 +318,7 @@ pub async fn get_lyrics(
     if let Some((lyrics, artist_id, title)) = song {
         let artist_name = sqlx::query_as::<_, (String,)>("SELECT name FROM artists WHERE id = ?")
             .bind(&artist_id)
-            .fetch_optional(&*state.pool)
+            .fetch_optional(&state.ctx.pool)
             .await?
             .map(|(name,)| name);
 
@@ -350,7 +351,17 @@ pub async fn get_avatar(_params: Query<DownloadParams>) -> Result<(HeaderMap, Ve
     Err(AppError::not_found("Avatar"))
 }
 
-pub fn routes() -> Router<CommState> {
+#[derive(Clone)]
+pub struct StreamState {
+    ctx: Arc<ServiceContext>,
+}
+impl StreamState {
+    /// 创建新的 BrowsingService
+    pub fn new(ctx: Arc<ServiceContext>) -> Self {
+        Self { ctx }
+    }
+}
+pub fn routes() -> Router<StreamState> {
     Router::new()
         .route("/rest/stream", get(stream))
         .route("/rest/download", get(download))

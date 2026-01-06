@@ -2,7 +2,7 @@
 //!
 //! Subsonic API 兼容的音乐流媒体服务器
 
-use crate::services::{song_service::CommState, BrowsingService};
+use crate::{handlers::stream::StreamState, services::BrowsingService};
 use axum::{middleware as axum_middleware, Router};
 use musicflow_server::utils::id_builder;
 use std::net::SocketAddr;
@@ -97,19 +97,19 @@ fn build_app(pool: DbPool, config: AppConfig) -> Router {
     let browsing_service = Arc::new(BrowsingService::new(service_ctx.clone()));
     let search_service = Arc::new(SearchService::new(service_ctx.clone()));
     let play_queue_service = Arc::new(PlayQueueService::new(service_ctx.clone()));
+    let stream_state = StreamState::new(service_ctx.clone());
 
     // 创建共享状态
     let _auth_state = auth_service.clone();
 
     let pool = Arc::new(pool);
-    let comm_state = CommState { pool: pool.clone() };
 
     // 构建各个模块的路由
     let system_routes = handlers::system::routes();
     let auth_routes = handlers::auth::routes().with_state(auth_service);
     let browsing_routes = handlers::browsing::routes(pool.clone(), browsing_service);
     let search_routes = handlers::search::routes().with_state(search_service.clone());
-    let stream_routes = handlers::stream::routes().with_state(comm_state);
+    let stream_routes = handlers::stream::routes().with_state(stream_state);
     let playlist_state = handlers::playlist::PlaylistState {
         playlist_service,
         pool: pool.clone(),
