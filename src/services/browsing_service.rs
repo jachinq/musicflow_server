@@ -407,10 +407,23 @@ impl BrowsingService {
         .fetch_optional(&self.ctx.pool)
         .await?;
 
+        let starred = sqlx::query_scalar::<_, String>(
+            "SELECT song_id FROM starred WHERE user_id = ? AND song_id = ?",
+        )
+        .bind(user_id)
+        .bind(&song.id)
+        .fetch_optional(&self.ctx.pool)
+        .await?;
+        let starred = if let Some(s) = starred {
+            Some(s.eq(&song.id))
+        } else {
+            None
+        };
+
         let complex_song = ComplexSongDto {
             song,
             user_rating: rating,
-            is_starred: None,
+            starred,
             suffix,
         };
 

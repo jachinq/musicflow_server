@@ -41,7 +41,7 @@ pub struct Song {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_rating: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub is_starred: Option<bool>,
+    pub starred: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suffix: Option<String>,
 }
@@ -68,7 +68,7 @@ impl From<SongDto> for Song {
             size: None,
             play_count: None,
             user_rating: None,
-            is_starred: None,
+            starred: None,
             suffix: None,
         }
     }
@@ -95,7 +95,7 @@ impl From<SongDetailDto> for Song {
             size: None,
             play_count: None,
             user_rating: None,
-            is_starred: None,
+            starred: None,
             suffix: None,
         }
     }
@@ -125,7 +125,7 @@ impl From<ComplexSongDto> for Song {
             size: dto.song.file_size,
             play_count: dto.song.play_count,
             user_rating: dto.user_rating,
-            is_starred: dto.is_starred,
+            starred: dto.starred,
             suffix: dto.suffix,
         }
     }
@@ -232,8 +232,8 @@ impl ToXml for Song {
         if let Some(value) = &self.user_rating {
             xml.push_str(&format!(r#" userRating="{}""#, value));
         }
-        if let Some(value) = &self.is_starred {
-            xml.push_str(&format!(r#" isStarred="{}""#, value));
+        if let Some(value) = &self.starred {
+            xml.push_str(&format!(r#" starred="{}""#, value));
         }
         if let Some(value) = &self.suffix {
             xml.push_str(&format!(r#" suffix="{}""#, value));

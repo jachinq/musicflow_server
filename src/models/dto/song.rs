@@ -45,6 +45,6 @@ pub struct SongDetailDto {
 pub struct ComplexSongDto {
     pub song: SongDetailDto,
     pub user_rating: Option<i32>,
-    pub is_starred: Option<bool>,
+    pub starred: Option<bool>,
     pub suffix: Option<String>,
 }
