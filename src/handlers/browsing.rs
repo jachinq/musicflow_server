@@ -359,11 +359,13 @@ pub async fn get_random_songs(
     Format(format): Format,
     axum::extract::State(state): axum::extract::State<BrowsingState>,
     Query(params): Query<GetRandomSongsParams>,
+    claims: crate::middleware::auth_middleware::Claims
 ) -> Result<ApiResponse<RandomSongsResponse>, AppError> {
     let size = params.size.unwrap_or(10).min(500);
     let songs = state
         .browseing_service
         .get_random_songs(
+            &claims.sub,
             size,
             params.genre.as_deref(),
             params.from_year,
@@ -371,7 +373,7 @@ pub async fn get_random_songs(
         )
         .await?;
 
-    let song_responses = Song::from_detail_dtos(songs);
+    let song_responses = songs.into_iter().map(Into::into).collect();
 
     let result = RandomSongsResponse {
         random_songs: RandomSongs {

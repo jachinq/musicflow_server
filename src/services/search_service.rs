@@ -8,9 +8,8 @@
 
 use crate::error::AppError;
 use crate::models::dto::{AlbumDetailDto, AlbumDto, ArtistDto, ComplexSongDto, SongDetailDto};
-use crate::services::ServiceContext;
-use crate::utils::{image_utils, sql_utils};
-use std::path::Path;
+use crate::services::{ServiceContext, SongService};
+use crate::utils::sql_utils;
 use std::sync::Arc;
 
 /// 搜索结果
@@ -241,47 +240,9 @@ impl SearchService {
         .fetch_all(&self.ctx.pool)
         .await?;
 
-        let rating = sqlx::query_as::<_, (i32, String)>(
-            "SELECT rating,song_id FROM ratings WHERE user_id = ? AND song_id != ''",
-        )
-        .bind(&user_id)
-        .fetch_all(&self.ctx.pool)
-        .await?;
-
-        let starred = sqlx::query_as::<_, (String, String)>(
-            "SELECT id,song_id FROM starred WHERE user_id = ? AND song_id != ''",
-        )
-        .bind(&user_id)
-        .fetch_all(&self.ctx.pool)
-        .await?;
-
-        let complex_songs = songs
-            .into_iter()
-            .map(|song| {
-                let suffix = if song.path.is_some() {
-                    Some(image_utils::get_content_type(Path::new(
-                        &song.path.clone().unwrap(),
-                    )))
-                } else {
-                    None
-                };
-
-                let r = rating
-                    .iter()
-                    .find_map(|r| if r.1.eq(&song.id) { Some(r.0) } else { None });
-
-                let starred = starred
-                        .iter()
-                        .find_map(|s| if s.1.eq(&song.id) { Some(true) } else { None });
-
-                ComplexSongDto {
-                    song,
-                    user_rating: r,
-                    starred,
-                    suffix,
-                }
-            })
-            .collect::<Vec<_>>();
+        // 使用 SongService 丰富歌曲信息
+        let song_service = SongService::new(self.ctx.clone());
+        let complex_songs = song_service.enrich_songs(user_id, songs).await?;
 
         tracing::info!(
             "limit {}, offset {}, query={} len={}",
@@ -338,13 +299,42 @@ mod tests {
                 album_id TEXT NOT NULL,
                 duration INTEGER DEFAULT 0,
                 bit_rate INTEGER,
-                track INTEGER,
+                track_number INTEGER,
                 disc_number INTEGER,
-                size INTEGER,
-                suffix TEXT,
+                year INTEGER,
+                genre TEXT,
+                file_path TEXT,
+                file_size INTEGER,
                 content_type TEXT,
-                path TEXT,
                 play_count INTEGER DEFAULT 0
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "CREATE TABLE ratings (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                song_id TEXT NOT NULL,
+                rating INTEGER NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "CREATE TABLE starred (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                artist_id TEXT,
+                album_id TEXT,
+                song_id TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )",
         )
         .execute(&pool)
@@ -367,9 +357,9 @@ mod tests {
         .unwrap();
 
         sqlx::query(
-            "INSERT INTO songs (id, title, artist_id, album_id, duration, track)
-             VALUES ('song1', 'Test Song', 'artist1', 'album1', 180, 1),
-                    ('song2', 'Another Song', 'artist2', 'album2', 200, 1)",
+            "INSERT INTO songs (id, title, artist_id, album_id, duration, track_number, file_path)
+             VALUES ('song1', 'Test Song', 'artist1', 'album1', 180, 1, '/test/song1.mp3'),
+                    ('song2', 'Another Song', 'artist2', 'album2', 200, 1, '/test/song2.mp3')",
         )
         .execute(&pool)
         .await

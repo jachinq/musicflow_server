@@ -11,9 +11,8 @@ use crate::error::AppError;
 use crate::models::dto::{
     AlbumDetailDto, ArtistDetailDto, ArtistDto, ComplexSongDto, SongDetailDto,
 };
-use crate::services::ServiceContext;
-use crate::utils::{image_utils, sql_utils};
-use std::path::Path;
+use crate::services::{ServiceContext, SongService};
+use crate::utils::sql_utils;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -191,12 +190,13 @@ impl BrowsingService {
     /// * `to_year` - 可选的结束年份
     pub async fn get_random_songs(
         &self,
+        user_id: &str,
         size: i32,
         genre: Option<&str>,
         from_year: Option<i32>,
         to_year: Option<i32>,
-    ) -> Result<Vec<SongDetailDto>, AppError> {
-        let mut conditions = vec!["1=1".to_string()];
+    ) -> Result<Vec<ComplexSongDto>, AppError> {
+        let mut conditions: Vec<String> = vec!["1=1".to_string()];
 
         if let Some(g) = genre {
             conditions.push(format!("al.genre = '{}'", g));
@@ -221,7 +221,9 @@ impl BrowsingService {
             .fetch_all(&self.ctx.pool)
             .await?;
 
-        Ok(songs)
+        let complex_songs = SongService::new(self.ctx.clone()).enrich_songs(user_id, songs).await?;
+
+        Ok(complex_songs)
     }
 
     /// 获取艺术家的热门歌曲
@@ -382,50 +384,9 @@ impl BrowsingService {
     ///
     /// * `song_id` - 歌曲 ID
     pub async fn get_song(&self, user_id: &str, song_id: &str) -> Result<ComplexSongDto, AppError> {
-        let song = sqlx::query_as::<_, SongDetailDto>(&format!(
-            "{} WHERE s.id = ?",
-            sql_utils::detail_sql()
-        ))
-        .bind(song_id)
-        .fetch_optional(&self.ctx.pool)
-        .await?
-        .ok_or_else(|| AppError::not_found("Song"))?;
-
-        let suffix = if song.path.is_some() {
-            Some(image_utils::get_content_type(Path::new(
-                &song.path.clone().unwrap(),
-            )))
-        } else {
-            None
-        };
-
-        let rating = sqlx::query_scalar::<_, i32>(
-            "SELECT rating FROM ratings WHERE user_id = ? AND song_id = ?",
-        )
-        .bind(user_id)
-        .bind(&song.id)
-        .fetch_optional(&self.ctx.pool)
-        .await?;
-
-        let starred = sqlx::query_scalar::<_, String>(
-            "SELECT song_id FROM starred WHERE user_id = ? AND song_id = ?",
-        )
-        .bind(user_id)
-        .bind(&song.id)
-        .fetch_optional(&self.ctx.pool)
-        .await?;
-        let starred = if let Some(s) = starred {
-            Some(s.eq(&song.id))
-        } else {
-            None
-        };
-
-        let complex_song = ComplexSongDto {
-            song,
-            user_rating: rating,
-            starred,
-            suffix,
-        };
+        // 使用 SongService 获取完整歌曲信息
+        let song_service = SongService::new(self.ctx.clone());
+        let complex_song = song_service.get_complex_song(user_id, song_id).await?;
 
         Ok(complex_song)
     }
@@ -759,6 +720,20 @@ mod tests {
                 user_id TEXT NOT NULL,
                 song_id TEXT NOT NULL,
                 rating INTEGER NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "CREATE TABLE starred (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                artist_id TEXT,
+                album_id TEXT,
+                song_id TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )",
         )

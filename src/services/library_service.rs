@@ -7,8 +7,8 @@
 //! - 评分
 
 use crate::error::AppError;
-use crate::models::dto::{AlbumDetailDto, AlbumDto, ArtistDto, ArtistStarredDto, SongDto};
-use crate::services::ServiceContext;
+use crate::models::dto::{AlbumDetailDto, AlbumDto, ArtistDto, ArtistStarredDto, SongDto, ComplexSongDto, SongDetailDto};
+use crate::services::{ServiceContext, SongService};
 use crate::utils::id_builder;
 use futures::FutureExt;
 use std::sync::Arc;
@@ -34,7 +34,7 @@ pub struct StarredItems {
 pub struct StarredItemsDetail {
     pub artists: Vec<ArtistStarredDto>,
     pub albums: Vec<AlbumDetailDto>,
-    pub songs: Vec<SongDto>,
+    pub songs: Vec<ComplexSongDto>,
 }
 
 /// 库管理服务
@@ -306,7 +306,7 @@ impl LibraryService {
         let (artists, albums, songs) = tokio::try_join!(
             self.get_starred_artists_with_details(&user_id),
             self.get_starred_albums_with_details(&user_id),
-            self.get_starred_songs(&user_id),  // 歌曲已包含 duration
+            self.get_starred_songs_with_details(&user_id),  // 歌曲已包含 duration
         )?;
 
         Ok(StarredItemsDetail {
@@ -396,6 +396,21 @@ impl LibraryService {
         .await?;
 
         Ok(albums)
+    }
+
+    /// 获取收藏的歌曲 (私有方法)
+    async fn get_starred_songs_with_details(&self, user_id: &str) -> Result<Vec<ComplexSongDto>, AppError> {
+        let song_ids = sqlx::query_scalar::<_, String>(
+            "SELECT song_id  FROM starred WHERE user_id = ? AND song_id IS NOT NULL",
+        )
+        .bind(user_id)
+        .fetch_all(&self.ctx.pool)
+        .await?;
+
+        let song_service = SongService::new(self.ctx.clone());
+        let songs = song_service.get_complex_songs_by_ids(user_id, &song_ids).await?;
+
+        Ok(songs)
     }
 
     /// 获取音乐库中的歌曲总数

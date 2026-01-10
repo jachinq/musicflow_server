@@ -139,6 +139,9 @@ impl Song {
     pub fn from_detail_dtos(dtos: Vec<SongDetailDto>) -> Vec<Self> {
         dtos.into_iter().map(|dto| dto.into()).collect()
     }
+    pub fn from_complex_dtos(dtos: Vec<ComplexSongDto>) -> Vec<Self> {
+        dtos.into_iter().map(|dto| dto.into()).collect()
+    }
 }
 
 /// 随机歌曲响应

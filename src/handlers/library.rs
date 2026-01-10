@@ -4,8 +4,8 @@
 use crate::error::AppError;
 use crate::extractors::Format;
 use crate::models::response::{
-    AlbumResponse, ArtistResponse, RatingResponse, RatingResponseWrapper, Song, StarredResponse,
-    ToXml,
+    AlbumResponse, ArtistResponse, RatingResponse, RatingResponseWrapper, Song, Starred2Response,
+    Starred2ResponseWrapper, StarredResponse, StarredResponseWrapper, ToXml,
 };
 use crate::response::ApiResponse;
 use crate::services::{LibraryService, ScanService, StarItemType};
@@ -297,27 +297,29 @@ pub async fn get_starred(
     axum::extract::State(state): axum::extract::State<LibraryState>,
     _params: Query<ScanParams>,
     Format(format): Format,
-) -> Result<ApiResponse<StarredResponse>, AppError> {
+) -> Result<ApiResponse<StarredResponseWrapper>, AppError> {
     let user_id = &claims.sub;
 
     // 调用 Service 层 (并行查询三个表)
     let starred_items = state.library_service.get_starred_items(user_id).await?;
 
-    let result = StarredResponse {
-        artist: if starred_items.artists.is_empty() {
-            None
-        } else {
-            Some(ArtistResponse::from_dtos(starred_items.artists))
-        },
-        album: if starred_items.albums.is_empty() {
-            None
-        } else {
-            Some(AlbumResponse::from_dtos(starred_items.albums))
-        },
-        song: if starred_items.songs.is_empty() {
-            None
-        } else {
-            Some(Song::from_dtos(starred_items.songs))
+    let result = StarredResponseWrapper {
+        starred: StarredResponse {
+            artist: if starred_items.artists.is_empty() {
+                None
+            } else {
+                Some(ArtistResponse::from_dtos(starred_items.artists))
+            },
+            album: if starred_items.albums.is_empty() {
+                None
+            } else {
+                Some(AlbumResponse::from_dtos(starred_items.albums))
+            },
+            song: if starred_items.songs.is_empty() {
+                None
+            } else {
+                Some(Song::from_dtos(starred_items.songs))
+            },
         },
     };
 
@@ -330,27 +332,33 @@ pub async fn get_starred2(
     axum::extract::State(state): axum::extract::State<LibraryState>,
     _params: Query<ScanParams>,
     Format(format): Format,
-) -> Result<ApiResponse<StarredResponse>, AppError> {
+) -> Result<ApiResponse<Starred2ResponseWrapper>, AppError> {
     let user_id = &claims.sub;
 
     // 调用 Service 层 (并行查询三个表，返回详细信息)
-    let starred_items = state.library_service.get_starred_items_with_details(user_id).await?;
+    let starred_items = state
+        .library_service
+        .get_starred_items_with_details(user_id)
+        .await?;
+    // tracing::info!("starred_items: {:?}", starred_items);
 
-    let result = StarredResponse {
-        artist: if starred_items.artists.is_empty() {
-            None
-        } else {
-            Some(ArtistResponse::from_starred_dtos(starred_items.artists))
-        },
-        album: if starred_items.albums.is_empty() {
-            None
-        } else {
-            Some(AlbumResponse::from_dto_details(starred_items.albums))
-        },
-        song: if starred_items.songs.is_empty() {
-            None
-        } else {
-            Some(Song::from_dtos(starred_items.songs))
+    let result = Starred2ResponseWrapper {
+        starred2: Starred2Response {
+            artist: if starred_items.artists.is_empty() {
+                None
+            } else {
+                Some(ArtistResponse::from_starred_dtos(starred_items.artists))
+            },
+            album: if starred_items.albums.is_empty() {
+                None
+            } else {
+                Some(AlbumResponse::from_dto_details(starred_items.albums))
+            },
+            song: if starred_items.songs.is_empty() {
+                None
+            } else {
+                Some(Song::from_complex_dtos(starred_items.songs))
+            },
         },
     };
 
